@@ -131,6 +131,43 @@ tasks.withType(JavaCompile) {
 
 ---
 
+## 📜 레거시 이슈 아카이브 (board-project → selfsupport-site)
+
+이 프로젝트는 기존 **[board-project](https://github.com/yjin0034/board-project)** 저장소에서 시작되었습니다.  
+아래는 selfsupport-site의 설계와 구현 시 참고할 수 있는 핵심 이슈들입니다.
+
+### 1) 게시판 CRUD
+- [#19 CRUD 기본 구현](https://github.com/yjin0034/board-project/issues/19)  
+  엔티티/DTO 분리, 서비스/리포지토리 계층화, 예외/검증, 트랜잭션 경계
+- [#45 수정/삭제 권한](https://github.com/yjin0034/board-project/issues/45)  
+  작성자 권한 정책
+
+### 2) 검색/정렬(페이징)
+- [#27 검색 조건/정렬 기준](https://github.com/yjin0034/board-project/issues/27)  
+  QueryDSL 기반 검색 및 정렬 기능
+
+### 3) 해시태그 검색
+- [#33 해시태그 검색 API/쿼리](https://github.com/yjin0034/board-project/issues/33)
+- [#41 해시태그 검색 페이지 추가](https://github.com/yjin0034/board-project/issues/41)
+
+### 4) 댓글
+- [#43 댓글 CRUD](https://github.com/yjin0034/board-project/issues/43)
+- [#45 수정/삭제 권한](https://github.com/yjin0034/board-project/issues/45)  
+  작성자 권한 정책
+
+### 5) 인증(로그인)
+- [#45 로그인 및 권한 설정](https://github.com/yjin0034/board-project/issues/45)  
+  게시글/댓글 작성 및 수정 권한 정책
+
+### 6) GitHub Releases
+- [#51 게시판 서비스의 첫 번째 버전 완성](https://github.com/yjin0034/board-project/issues/51)
+
+### 7) 멀티모듈 → 단일모듈 리팩터링
+- [#53 모듈 병합 전략](https://github.com/yjin0034/board-project/issues/53)  
+  중첩된 디렉토리 제거 및 루트 프로젝트로 평탄화
+
+---
+
 ## 📌 기타 참고사항
 
 - Spring Boot 3.x 기반으로 Jakarta 패키지 체계에 맞추어 구성
