@@ -34,7 +34,7 @@ spring:
     init:
       mode: always
       #TODO: board JpaRepository 테스트가 application.yaml 에 영향을 받는다. 추후 application-test.yaml 로 빼주기
-      data-locations: classpath:sql/data-board.sql
+      #data-locations: classpath:sql/data-board.sql
   flyway:
     enabled: false
   data.rest:

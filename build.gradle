@@ -79,3 +79,13 @@ sourceSets {
 clean {
     delete file(generated)
 }
+
+// 테스트
+test {
+    useJUnitPlatform()
+    testLogging {
+        events "passed", "skipped", "failed"   // 통과/스킵/실패 로그
+        showStandardStreams = true             // System.out, printStackTrace 보이기
+        exceptionFormat = 'full'
+    }
+}
