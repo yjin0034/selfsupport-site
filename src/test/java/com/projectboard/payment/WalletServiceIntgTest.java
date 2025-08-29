@@ -1,0 +1,92 @@
+package com.projectboard.payment;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.junit.jupiter.SpringExtension;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+
+@SpringBootTest
+@ExtendWith(SpringExtension.class)
+public class WalletServiceIntgTest {
+
+    @Autowired WalletService walletService;
+    @Autowired WalletRepository walletRepository;
+
+    @Test
+    @Transactional
+    @DisplayName("지갑을 생성한다 - 기본 필드/DB 반영 검증")
+    void createWallet_persists_and_hasDefaults() {
+        // given
+        CreateWalletRequest request = new CreateWalletRequest(100L);    // 요청 DTO: userId=100 사용자의 지갑을 생성
+
+        // when
+        CreatedWalletResponse response = walletService.createWallet(request); // 실제 서비스 로직 호출 (스프링 컨텍스트/JPA/트랜잭션이 모두 동작)
+
+        // then
+        // 서비스 응답 1차 검증
+        assertThat(response).isNotNull();
+        assertThat(response.id())
+                .as("생성된 지갑의 PK는 DB에서 발급되므로 null이 아니어야 한다")
+                .isNotNull();
+        assertThat(response.userId())
+                .as("응답의 userId는 요청과 동일해야 한다")
+                .isEqualTo(100L);
+        assertThat(response.balance())
+                .as("신규 지갑 잔액은 0이어야 한다 (도메인 기본 규칙)")
+                .isEqualByComparingTo(BigDecimal.ZERO); // BigDecimal.equals 는 scale(자릿수)까지 비교하므로, 금액 검증에는 isEqualByComparingTo(값 비교) 권장
+
+        // 실제 DB에 저장되었는지 'PK로' 재조회하여 확정 검증
+        Wallet persisted = walletRepository.findById(response.id())
+                .orElseThrow(() -> new AssertionError("DB에 Wallet이 저장되지 않았습니다."));
+
+        // 재조회한 엔티티 필드 검증 (응답과 DB 상태가 일치하는지 확인)
+        assertThat(persisted.getUserId())
+                .as("DB에 저장된 userId는 요청한 userId와 같아야 한다")
+                .isEqualTo(100L);
+        assertThat(persisted.getBalance())
+                .as("DB에 저장된 초기 잔액은 0이어야 한다")
+                .isEqualByComparingTo("0");
+        assertThat(persisted.getCreatedAt())
+                .as("생성 시각은 영속화 시점에 채워져야 한다(@PrePersist/도메인 설정)")
+                .isNotNull();
+        assertThat(persisted.getUpdatedAt())
+                .as("수정 시각도 최초 생성 시점에 세팅되거나 @PrePersist 로 초기화되어야 한다")
+                .isNotNull();
+
+        // 디버깅 출력
+        System.out.println("✅ created: " + response);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("지갑을 중복 생성할 수 없다 - 같은 userId 재요청 시 예외")
+    void createWallet_duplicate_shouldThrow() {
+        // given
+        Long userId = 200L;
+        walletService.createWallet(new CreateWalletRequest(userId)); // 최초 한 번 생성
+
+        // when
+        // 동일 userId로 다시 생성 요청 → 예외가 발생해야 함
+        Throwable thrown = catchThrowable(() ->
+                walletService.createWallet(new CreateWalletRequest(userId))
+        );
+
+        // then
+        assertThat(thrown)
+                .as("같은 사용자에 대해 지갑을 중복 생성하면 예외가 발생해야 한다")
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("지갑");
+
+        // 디버깅 출력
+        if (thrown != null) thrown.printStackTrace();
+    }
+
+}
