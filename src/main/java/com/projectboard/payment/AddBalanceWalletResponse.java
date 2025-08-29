@@ -4,6 +4,6 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record AddBalanceWalletResponse(
-        Long id, Long UserId, BigDecimal balance, LocalDateTime createdAt, LocalDateTime updatedAt
+        Long id, Long userId, BigDecimal balance, LocalDateTime createdAt, LocalDateTime updatedAt
 ) {
 }
