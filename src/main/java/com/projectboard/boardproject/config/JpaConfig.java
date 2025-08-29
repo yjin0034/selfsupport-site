@@ -16,7 +16,7 @@ import java.util.Optional;
 public class JpaConfig {
 
     @Bean
-    public AuditorAware<String> audiotrAware() {
+    public AuditorAware<String> auditorAware() {
         return () -> Optional.ofNullable(SecurityContextHolder.getContext())
                 .map(SecurityContext::getAuthentication)
                 .filter(Authentication::isAuthenticated)
