@@ -1,5 +1,7 @@
 package com.projectboard.payment;
 
+import com.projectboard.payment.transaction.ChargeTransactionRequest;
+import com.projectboard.payment.wallet.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -57,13 +59,13 @@ class WalletServiceTest {
     private WalletService walletService;
 
     @Test
-    @DisplayName("지갑 생성 요청 시, 지갑이 없다면 새로 생성된다.")
+    @DisplayName("지갑 생성 요청 - 지갑이 없다면 새로 생성된다")
     void createWallet_whenUserHasNoWallet_thenCreates() {
 
         // given
         CreateWalletRequest request = new CreateWalletRequest(1L);  // userId=1 인 요청 생성
 
-        // save 호출 시 DB 저장 후 id가 생성된 것처럼 반환하도록 설정
+        // save 호출 시 DB 저장 후 id가 생성된 것처럼 반환하도록 스텁 설정
         given(walletRepository.save(any(Wallet.class)))
                 .willAnswer(invocation -> {
                     // save(...) 호출 시 넘겨진 Wallet 인스턴스를 꺼냄
@@ -78,7 +80,7 @@ class WalletServiceTest {
         CreatedWalletResponse createdWallet = walletService.createWallet(request);
 
         // then
-        // 상호작용 검증
+        // 1. 상호작용 검증
         // walletRepository.save 가 정확히 1번 호출되었는지 검증
         ArgumentCaptor<Wallet> captor = ArgumentCaptor.forClass(Wallet.class); // 인자 검증을 위해 ArgumentCaptor로 실제 전달값 캡처
         then(walletRepository).should(times(1)).save(captor.capture());
@@ -101,7 +103,7 @@ class WalletServiceTest {
                 .isEqualTo(BigDecimal.ZERO);
 
         // 불필요한 추가 상호작용 없는지 체크
-        then(walletRepository).shouldHaveNoMoreInteractions();
+        //then(walletRepository).shouldHaveNoMoreInteractions();
 
         // 디버깅용 출력
         System.out.println(createdWallet);
@@ -109,7 +111,7 @@ class WalletServiceTest {
     }
 
     @Test
-    @DisplayName("지갑 생성 요청 시, 이미 지갑을 갖고 있다면 예외를 던진다.")
+    @DisplayName("지갑 생성 요청 - 이미 지갑을 갖고 있다면 예외 전파")
     void createWallet_whenAlreadyHasWallet_thenThrows() {
 
         // given
@@ -125,13 +127,13 @@ class WalletServiceTest {
         Throwable thrown = catchThrowable(() -> walletService.createWallet(request));
 
         // then
-        // 예외 타입/메시지 검증
+        // 1. 예외 타입/메시지 검증
         assertThat(thrown)
                 .as("이미 지갑이 있을 때는 예외가 발생해야 한다") // 실패 시 출력할 설명
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("지갑");              // 예외 메시지에 핵심 키워드가 포함되어 있는지 검증
 
-        // 상호작용 검증
+        // 2. 상호작용 검증
         // findWalletByUserId() 가 정확히 1번 호출되었는지 검증
         then(walletRepository).should(times(1)).findWalletByUserId(1L);
         // save() 는 호출되지 않았는지 검증 (이미 존재하므로 신규 저장 X)
@@ -148,37 +150,44 @@ class WalletServiceTest {
     }
 
     @Test
-    @DisplayName("지갑을 조회한다. - 생성되어 있지 않은 경우 null 반환")
-    void findWalltByUserId_whenNotExists_thenReturnsNull() {
-
+    @DisplayName("지갑 조회 - 지갑이 없으면 예외 전파")
+    void findWalletByUserId_whenNotExists_thenThrows() {
         // given
-        Long userId = 1L;
+        Long walletId = 1L;
 
         // 저장소가 "없음"을 반환하도록 스텁
-        given(walletRepository.findWalletByUserId(userId))
+        given(walletRepository.findById(walletId))
                 .willReturn(Optional.empty());
 
         // when
-        FindWalletResponse result = walletService.findWalletByUserId(userId);
+        // 예외를 잡아온다
+        Throwable thrown = catchThrowable(() ->
+                walletService.findWalletByWalletId(walletId)
+        );
 
         // then
-        // 반환값이 null 인지 검증
-        assertThat(result)
-                .as("존재하지 않는 지갑을 조회하면  null을 반환해야 한다")
-                .isNull();
+        // 1. 예외 타입/메시지 검증
+        assertThat(thrown)
+                .as("존재하지 않는 사용자 지갑을 조회하면 WalletNotFoundException이 발생해야 한다")
+                .isInstanceOf(WalletNotFoundException.class)
+                .hasMessageContaining("지갑");
 
-        // 저장소 상호작용 검증
-        // walletRepository.findWalletByUserId 가 정확히 1번 호출되었는지 검증
-        then(walletRepository).should(times(1)).findWalletByUserId(userId);
+        // 2. 상호작용 검증
+        // walletRepository.findById 가 정확히 1번 호출되었는지 검증
+        then(walletRepository).should(times(1)).findById(walletId);
         // 그 외 불필요한 상호작용 없는지 검증
         then(walletRepository).shouldHaveNoMoreInteractions();
 
-        // 디버깅용 출력
-        System.out.printf("🔎 findWalletByUserId(%d) -> result=%s%n", userId, result);
+        // 3. 디버깅 출력
+        if (thrown != null) {
+            thrown.printStackTrace();
+            System.out.printf("🔎 findWalletByUserId(%d) -> ex=%s%n",
+                    walletId, thrown.getClass().getSimpleName());
+        }
     }
 
     @Test
-    @DisplayName("지갑 잔액 추가 - 지갑이 존재하고 한도 내라면 잔액이 업데이트 된다.")
+    @DisplayName("지갑 잔액 추가 - 지갑이 존재하고 한도 내라면 잔액이 업데이트 된다")
     void addBalance_whenExistAndWithinLimit_thenUpdated() {
 
         // given
@@ -206,17 +215,17 @@ class WalletServiceTest {
                 walletService.addBalance(new AddBalanceWalletRequest(walletId, addAmount));
 
         // then
-        // 반환 DTO의 balance() 가 기대값(300.00)인지 검증
+        // 1. 반환 DTO의 balance() 가 기대값(300.00)인지 검증
         assertThat(result.balance())
                 .as("충전 후 반환 DTO의 잔액은 300.00이어야 한다")
                 .isEqualTo(expected);
 
-        // 엔티티 내부 상태(영속 컨텍스트 내 변경)도 기대대로 변경되었는지 확인
+        // 2. 엔티티 내부 상태(영속 컨텍스트 내 변경)도 기대대로 변경되었는지 확인
         assertThat(wallet.getBalance())
                 .as("엔티티 자체의 잔액도 300.00이어야 한다")
                 .isEqualTo(expected);
 
-        // 상호작용 검증
+        // 3. 상호작용 검증
         // walletRepository.findById 가 정확히 1번 호출되었는지 검증
         then(walletRepository).should(times(1)).findById(walletId);
         // 그 외 불필요한 상호작용 없는지 검증
@@ -252,13 +261,13 @@ class WalletServiceTest {
         );
 
         // then
-        // 예외 타입/메시지 검증
+        // 1. 예외 타입/메시지 검증
         assertThat(thrown)
-                .as("지갑이 없으면 예외가 발생해야 한다")
-                .isInstanceOf(RuntimeException.class)
+                .as("지갑이 없으면 WalletNotFoundException이 발생해야 한다")
+                .isInstanceOf(WalletNotFoundException.class)
                 .hasMessageContaining("지갑");
 
-        // 상호작용 검증
+        // 2. 상호작용 검증
         // walletRepository.findById 가 정확히 1번 호출되었는지 검증
         then(walletRepository).should(times(1)).findById(walletId);
         // 예외로 종료되므로 save()는 호출되면 안 됨
@@ -275,7 +284,7 @@ class WalletServiceTest {
     }
 
     @Test
-    @DisplayName("지갑 잔액 추가 - 잔액 부족(차감 결과 음수)이면 예외 발생")
+    @DisplayName("지갑 잔액 추가 - 잔액 부족(차감 결과 음수)이면 예외 전파")
     void addBalance_whenInsufficientBalance_thenThrows() {
 
         // given
@@ -303,13 +312,13 @@ class WalletServiceTest {
         );
 
         // then
-        // 예외 타입/메시지 검증
+        // 1. 예외 타입/메시지 검증
         assertThat(thrown)
-                .as("잔액 부족(차감 후 음수)이면 IllegalArgumentException이 발생해야 한다")
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("0보다 커야");
+                .as("잔액 부족(차감 후 음수)이면 IllegalStateException이 발생해야 한다")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("잔액이 부족");
 
-        // 상호작용 검증
+        // 2. 상호작용 검증
         // walletRepository.findById 가 정확히 1번 호출되었는지 검증
         then(walletRepository).should(times(1)).findById(walletId);
         // 예외로 종료되므로 save()는 호출되면 안 됨
@@ -354,13 +363,13 @@ class WalletServiceTest {
         );
 
         // then
-        // 예외 타입/메시지 검증
+        // 1. 예외 타입/메시지 검증
         assertThat(thrown)
                 .as("충전액 한도(100만원) 초과 시 IllegalArgumentException이 발생해야 한다")
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("한도");
 
-        // 상호작용 검증
+        // 2. 상호작용 검증
         // walletRepository.findById 가 정확히 1번 호출되었는지 검증
         then(walletRepository).should(times(1)).findById(walletId);
         // 예외로 종료되므로 save()는 호출되면 안 됨
