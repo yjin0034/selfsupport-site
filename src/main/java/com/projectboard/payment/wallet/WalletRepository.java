@@ -1,4 +1,4 @@
-package com.projectboard.payment;
+package com.projectboard.payment.wallet;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
