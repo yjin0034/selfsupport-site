@@ -1,4 +1,4 @@
-package com.projectboard.payment;
+package com.projectboard.payment.wallet;
 
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -35,6 +35,7 @@ public class Wallet {
     }
 
     // 충전 금액 검증 (검증, 계산, 상태 변경)
+    // 도메인 규칙: 충전(양수만 허용), 최대 잔액 한도 준수
     public void charge(BigDecimal amount, BigDecimal balanceLimit) {
         // 입력값 방어적 검증: null 또는 0/음수 금지
         if (amount == null || amount.signum() <= 0 ) {
@@ -59,4 +60,23 @@ public class Wallet {
         this.updatedAt = LocalDateTime.now();
     }
 
+    // 도메인 규칙: 결제/차감(양수만 허용), 잔액 부족 금지
+    public void spend(BigDecimal amount) {
+        // 입력값 방어적 검증: null 또는 0/음수 금지
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("결제 금액은 0보다 커야 합니다.");
+        }
+
+        // 결과 잔액 계산
+        BigDecimal candidate = this.balance.subtract(amount);
+
+        // 잔액 부족 검증
+        if (candidate.compareTo(BigDecimal.ZERO) < 0) {
+            throw new IllegalStateException("잔액이 부족합니다.");
+        }
+
+        // 상태 변경
+        this.balance = candidate;
+        this.updatedAt = LocalDateTime.now();
+    }
 }

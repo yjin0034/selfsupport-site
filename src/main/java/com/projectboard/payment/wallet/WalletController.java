@@ -1,4 +1,4 @@
-package com.projectboard.payment;
+package com.projectboard.payment.wallet;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -8,7 +8,6 @@ import org.springframework.web.bind.annotation.*;
 public class WalletController {
     private final WalletService walletService;
 
-    // TODO: Exception 처리 필요
     @PostMapping("/api/wallets")
     public CreatedWalletResponse createWallet(@RequestBody CreateWalletRequest request) {
         return walletService.createWallet(request);
@@ -16,7 +15,7 @@ public class WalletController {
 
     @GetMapping("/api/users/{userId}/wallets")
     public FindWalletResponse findWalletByUserId(@PathVariable("userId") Long userId) {
-        return walletService.findWalletByUserId(userId);
+        return walletService.findWalletByWalletId(userId);
     }
 
     @PostMapping("/api/wallets/add-balance")

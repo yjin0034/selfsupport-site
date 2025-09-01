@@ -1,4 +1,4 @@
-package com.projectboard.payment;
+package com.projectboard.payment.wallet;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,27 +13,30 @@ public class WalletService {
 
     private final WalletRepository walletRepository;
 
+    // 지갑 생성
     @Transactional
     public CreatedWalletResponse createWallet(CreateWalletRequest request) {
-        // 중복 체크
+        // 지갑 중복 체크
         walletRepository.findWalletByUserId(request.userId())
                 .ifPresent(existing -> {
                     throw new RuntimeException("해당 사용자의 지갑이 이미 존재합니다.");
                 });
 
-        // 신규 생성
+        // 새로운 지갑 생성
         final Wallet wallet = walletRepository.save(new Wallet(request.userId()));
+        // 결과 응답 반환
         return new CreatedWalletResponse(
                 wallet.getId(), wallet.getUserId(), wallet.getBalance());
     }
 
-    public FindWalletResponse findWalletByUserId(Long userId) {
-        return walletRepository.findWalletByUserId(userId)
-                .map(wallet -> new FindWalletResponse(
+    // 지갑 ID로 지갑 조회
+    public FindWalletResponse findWalletByWalletId(Long walletId) {
+        return walletRepository.findById(walletId)   // 지갑 조회
+                .map(wallet -> new FindWalletResponse( // 결과 매핑
                         wallet.getId(), wallet.getUserId(), wallet.getBalance(),
                         wallet.getCreatedAt(), wallet.getUpdatedAt()
                 ))
-                .orElse(null);
+                .orElseThrow(() -> new WalletNotFoundException(walletId));
     }
 
     // 잔액 충전
@@ -46,16 +49,30 @@ public class WalletService {
 
         // 엔티티 조회 (존재 검사)
         final Wallet wallet = walletRepository.findById(request.walletId())
-                .orElseThrow(() -> new RuntimeException("해당 사용자의 지갑이 존재하지 않습니다."));
+                .orElseThrow(() -> new WalletNotFoundException(request.walletId()));
+
+        // 변경 금액 검증
+        BigDecimal amt = request.amount();
+        // null 또는 0원인 경우 예외
+        if (amt == null || amt.signum() == 0) {
+            throw new IllegalArgumentException("변경 금액은 0일 수 없습니다.");
+        }
 
         // 충전 금액 검증
         // 도메인에 위임 (검증, 계산, 상태 변경)
-        wallet.charge(request.amount(), BALANCE_LIMIT);
+        // 부호에 따라 적절한 도메인 동작 호출
+        if (amt.signum() > 0) {
+            // 충전 분기
+            wallet.charge(amt, BALANCE_LIMIT);
+        } else {
+            // 차감 분기 : 내부 도메인 연산은 '양수'로 받도록 통일
+            wallet.spend(amt.abs());
+        }
 
         // 상태 변경
         walletRepository.save(wallet);
 
-        // 응답 생성
+        // 결과 응답 반환
         return new AddBalanceWalletResponse(
                 wallet.getId(), wallet.getUserId(), wallet.getBalance(),
                 wallet.getCreatedAt(), wallet.getUpdatedAt()

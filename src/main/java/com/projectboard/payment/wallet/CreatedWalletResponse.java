@@ -1,4 +1,4 @@
-package com.projectboard.payment;
+package com.projectboard.payment.wallet;
 
 import java.math.BigDecimal;
 

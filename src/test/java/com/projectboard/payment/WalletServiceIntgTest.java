@@ -1,5 +1,6 @@
 package com.projectboard.payment;
 
+import com.projectboard.payment.wallet.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,8 +18,10 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 @ExtendWith(SpringExtension.class)
 public class WalletServiceIntgTest {
 
-    @Autowired WalletService walletService;
-    @Autowired WalletRepository walletRepository;
+    @Autowired
+    WalletService walletService;
+    @Autowired
+    WalletRepository walletRepository;
 
     @Test
     @Transactional
