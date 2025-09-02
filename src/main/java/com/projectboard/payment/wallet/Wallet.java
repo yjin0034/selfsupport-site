@@ -1,28 +1,36 @@
 package com.projectboard.payment.wallet;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@Getter
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
 @Entity
+@Table( // 지갑 테이블, userId에 고유 제약 조건(Unique Constraint) 설정
+        name = "wallet", // 테이블명 지정
+        uniqueConstraints = @UniqueConstraint(name = "uk_wallet_user", columnNames = "user_id") // user_id 컬럼에 고유 제약 조건 설정
+)
 public class Wallet {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "user_id", nullable = false) // null 금지, 고유 제약 조건은 @Table에서 설정
     private Long userId;
 
+    @Column(nullable = false, precision = 19, scale = 2) // 19자리 숫자, 소수점 이하 2자리
     private BigDecimal balance;
+
+    @Version
+    private Long version; // 낙관적 락용 버전 필드
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -34,8 +42,31 @@ public class Wallet {
         this.updatedAt = LocalDateTime.now();
     }
 
-    // 충전 금액 검증 (검증, 계산, 상태 변경)
-    // 도메인 규칙: 충전(양수만 허용), 최대 잔액 한도 준수
+    // 테스트용 전체 필드 생성자
+    public Wallet(Long id, Long userId, BigDecimal balance,
+                  LocalDateTime createdAt, LocalDateTime updatedAt) {
+        this.id = id;
+        this.userId = userId;
+        this.balance = balance;
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
+    }
+
+    // createdAt, updatedAt 자동 설정
+    @PrePersist
+    void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    // updatedAt 자동 갱신
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // ===== 도메인 규칙 =====
+    // 충전(양수만 허용), 최대 한도 준수
     public void charge(BigDecimal amount, BigDecimal balanceLimit) {
         // 입력값 방어적 검증: null 또는 0/음수 금지
         if (amount == null || amount.signum() <= 0 ) {
@@ -57,10 +88,10 @@ public class Wallet {
 
         // 상태 변경
         this.balance = candidate;
-        this.updatedAt = LocalDateTime.now();
+        // updatedAt은 @PreUpdate로 관리됨
     }
 
-    // 도메인 규칙: 결제/차감(양수만 허용), 잔액 부족 금지
+    // 결제(양수만 허용), 잔액 부족 금지
     public void spend(BigDecimal amount) {
         // 입력값 방어적 검증: null 또는 0/음수 금지
         if (amount == null || amount.signum() <= 0) {
@@ -77,6 +108,5 @@ public class Wallet {
 
         // 상태 변경
         this.balance = candidate;
-        this.updatedAt = LocalDateTime.now();
     }
 }

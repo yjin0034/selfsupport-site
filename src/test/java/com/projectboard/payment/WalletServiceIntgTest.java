@@ -1,6 +1,7 @@
 package com.projectboard.payment;
 
 import com.projectboard.payment.wallet.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -10,6 +11,15 @@ import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -22,6 +32,9 @@ public class WalletServiceIntgTest {
     WalletService walletService;
     @Autowired
     WalletRepository walletRepository;
+
+    @AfterEach
+    void tearDown() { walletRepository.deleteAll(); } // 각 테스트 격리
 
     @Test
     @Transactional
@@ -69,27 +82,45 @@ public class WalletServiceIntgTest {
     }
 
     @Test
-    @Transactional
-    @DisplayName("지갑을 중복 생성할 수 없다 - 같은 userId 재요청 시 예외")
-    void createWallet_duplicate_shouldThrow() {
+    @DisplayName("동시에 같은 userId로 createWallet 호출해도 지갑은 1개만 생성된다")
+    void createWallet_concurrent_sameUser_isIdempotent_andUnique() throws Exception {
         // given
-        Long userId = 200L;
-        walletService.createWallet(new CreateWalletRequest(userId)); // 최초 한 번 생성
+        // 동일 userId로 여러 스레드에서 동시에 지갑 생성 요청
+        Long userId = 10L;
+        CreateWalletRequest request = new CreateWalletRequest(userId);
 
         // when
-        // 동일 userId로 다시 생성 요청 → 예외가 발생해야 함
-        Throwable thrown = catchThrowable(() ->
-                walletService.createWallet(new CreateWalletRequest(userId))
-        );
+        // 20개의 스레드가 거의 동시에 createWallet() 호출
+        int numOfThreads = 20;
+        ExecutorService service = Executors.newFixedThreadPool(numOfThreads); // 스레드풀 생성
+        CountDownLatch latch = new CountDownLatch(numOfThreads); // 모든 스레드 완료 대기용
 
         // then
-        assertThat(thrown)
-                .as("같은 사용자에 대해 지갑을 중복 생성하면 예외가 발생해야 한다")
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("지갑");
+        // 모든 스레드에서 동시에 요청 시작
+        for (int i = 0; i < numOfThreads; i++) {
+            // 각 스레드에서 지갑 생성 시도
+            service.submit(() -> {
+                try {
+                    walletService.createWallet(request); // 실제 서비스 호출
+                } finally {
+                    latch.countDown();  // 완료 표시
+                }
+            });
+        }
+
+        // 최대 10초 대기 (너무 오래 걸리면 타임아웃)
+        latch.await(); // 모든 스레드 완료 대기
+        service.shutdown(); // 스레드풀 종료
+
+        // 최종적으로 DB에 지갑이 1개만 존재하는지 확인
+        List<Wallet> wallets = walletRepository.findAll();
+        // 지갑은 유일하게 1개만 존재해야 한다
+        assertThat(wallets).hasSize(1);
+        // 유일한 지갑의 userId가 요청한 userId와 동일해야 한다
+        assertThat(wallets.get(0).getUserId()).isEqualTo(userId);
 
         // 디버깅 출력
-        if (thrown != null) thrown.printStackTrace();
+        System.out.printf("✅ 최종 지갑 개수: %d, userId=%d%n", wallets.size(), userId);
     }
 
 }

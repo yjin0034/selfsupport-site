@@ -13,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -61,7 +62,6 @@ class WalletServiceTest {
     @Test
     @DisplayName("지갑 생성 요청 - 지갑이 없다면 새로 생성된다")
     void createWallet_whenUserHasNoWallet_thenCreates() {
-
         // given
         CreateWalletRequest request = new CreateWalletRequest(1L);  // userId=1 인 요청 생성
 
@@ -111,42 +111,41 @@ class WalletServiceTest {
     }
 
     @Test
-    @DisplayName("지갑 생성 요청 - 이미 지갑을 갖고 있다면 예외 전파")
-    void createWallet_whenAlreadyHasWallet_thenThrows() {
-
+    @DisplayName("지갑 생성 요청 - 이미 지갑이 있다면 DataIntegrityViolationException 발생을 처리한다")
+    void createWallet_whenAlreadyHasWallet_thenHandleIntegrityViolation() {
         // given
-        CreateWalletRequest request = new CreateWalletRequest(1L);  // userId=1 인 요청 생성
+        Long userId = 1L;
+        CreateWalletRequest request = new CreateWalletRequest(userId);
 
-        // 저장소가 "이미 존재"한다고 응답하도록 스텁
-        given(walletRepository.findWalletByUserId(1L))
-                .willReturn(Optional.of(new Wallet(1L)));
+        // 저장소 save() 호출 시 무결성 제약 위반 예외 발생하도록 스텁
+        given(walletRepository.save(any(Wallet.class)))
+                .willThrow(new DataIntegrityViolationException("Unique index or primary key violation"));
+
+        // 동시에, findWalletByUserId() 는 이미 존재하는 엔티티를 반환하도록 세팅
+        given(walletRepository.findWalletByUserId(userId))
+                .willReturn(Optional.of(new Wallet(userId)));
 
         // when
-        // 예외 발생을 캡처하기 위해 AssertJ의 catchThrowable() 사용
-        // (assertThrows 대신 catchThrowable 사용 시, 체이닝 검증 편리)
-        Throwable thrown = catchThrowable(() -> walletService.createWallet(request));
+        // 실제 서비스 로직 호출
+        CreatedWalletResponse response = walletService.createWallet(request);
 
         // then
-        // 1. 예외 타입/메시지 검증
-        assertThat(thrown)
-                .as("이미 지갑이 있을 때는 예외가 발생해야 한다") // 실패 시 출력할 설명
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("지갑");              // 예외 메시지에 핵심 키워드가 포함되어 있는지 검증
+        // 1. 반환값 검증
+        assertThat(response).isNotNull();
+        assertThat(response.userId()).isEqualTo(userId);
 
         // 2. 상호작용 검증
-        // findWalletByUserId() 가 정확히 1번 호출되었는지 검증
-        then(walletRepository).should(times(1)).findWalletByUserId(1L);
-        // save() 는 호출되지 않았는지 검증 (이미 존재하므로 신규 저장 X)
-        then(walletRepository).should(never()).save(any(Wallet.class));
+        // walletRepository.save 가 정확히 1번 호출되었는지 검증
+        // save() 시도 후 → DataIntegrityViolationException 처리됨
+        then(walletRepository).should(times(1)).save(any(Wallet.class));
+        // walletRepository.findWalletByUserId 가 정확히 1번 호출되었는지 검증
+        then(walletRepository).should(times(1)).findWalletByUserId(userId);
         // 그 외 불필요한 상호작용 없는지 검증
         then(walletRepository).shouldHaveNoMoreInteractions();
 
-        // 디버깅용 출력
-        if (thrown != null) {
-            thrown.printStackTrace(); // 콘솔에 빨간 스택트레이스 (STDERR)
-            System.out.printf("🔎 thrown=%s, message=%s%n",
-                    thrown.getClass().getSimpleName(), thrown.getMessage());
-        }
+        // 디버깅 출력
+        System.out.printf("✅ 중복 생성 시 멱등 처리됨: walletId=%s, userId=%s, balance=%s%n",
+                response.id(), response.userId(), response.balance());
     }
 
     @Test
@@ -160,7 +159,8 @@ class WalletServiceTest {
                 .willReturn(Optional.empty());
 
         // when
-        // 예외를 잡아온다
+        // 예외 발생을 캡처하기 위해 AssertJ의 catchThrowable() 사용
+        // (assertThrows 대신 catchThrowable 사용 시, 체이닝 검증 편리)
         Throwable thrown = catchThrowable(() ->
                 walletService.findWalletByWalletId(walletId)
         );
@@ -189,20 +189,19 @@ class WalletServiceTest {
     @Test
     @DisplayName("지갑 잔액 추가 - 지갑이 존재하고 한도 내라면 잔액이 업데이트 된다")
     void addBalance_whenExistAndWithinLimit_thenUpdated() {
-
         // given
         Long walletId = 1L;
         BigDecimal initialBalance = new BigDecimal("200.00");
         BigDecimal addAmount = new BigDecimal("100.00");
         BigDecimal expected = new BigDecimal("300.00");
 
-        // 엔티티 직접 구성
+        // 엔티티 직접 구성 (6개 파라미터 생성자 사용)
         Wallet wallet = new Wallet(
-                walletId,
-                walletId,       // 편의상 userId = walletId 로 세팅
-                initialBalance,
-                LocalDateTime.now(),
-                LocalDateTime.now()
+                walletId,           // id
+                walletId,           // userId (편의상 동일 값 사용)
+                initialBalance,     // balance
+                LocalDateTime.now(),// createdAt
+                LocalDateTime.now() // updatedAt
         );
 
         // 저장소 스텁
@@ -245,7 +244,6 @@ class WalletServiceTest {
     @Test
     @DisplayName("지갑 잔액 추가 - 지갑이 존재하지 않으면 예외 발생")
     void addBalance_whenWalletNotFound_thenThrows() {
-
         // given
         Long walletId = 999L;
         BigDecimal amount = new BigDecimal("100.00");
@@ -286,7 +284,6 @@ class WalletServiceTest {
     @Test
     @DisplayName("지갑 잔액 추가 - 잔액 부족(차감 결과 음수)이면 예외 전파")
     void addBalance_whenInsufficientBalance_thenThrows() {
-
         // given
         Long walletId = 1L;
         BigDecimal initialBalance = new BigDecimal("50.00");
@@ -337,7 +334,6 @@ class WalletServiceTest {
     @Test
     @DisplayName("지갑 잔액 추가 - 충전액 한도 초과 시 예외 발생")
     void addBalance_whenExceedsLimit_thenThrows() {
-
         // given
         Long walletId = 1L;
         BigDecimal initialBalance = new BigDecimal("1.00");
