@@ -89,13 +89,13 @@ public class WalletServiceIntgTest {
         Long userId = 10L;
         CreateWalletRequest request = new CreateWalletRequest(userId);
 
-        // when
+        // 동시성 환경 준비
         // 20개의 스레드가 거의 동시에 createWallet() 호출
         int numOfThreads = 20;
         ExecutorService service = Executors.newFixedThreadPool(numOfThreads); // 스레드풀 생성
-        CountDownLatch latch = new CountDownLatch(numOfThreads); // 모든 스레드 완료 대기용
+        CountDownLatch latch = new CountDownLatch(numOfThreads);              // 모든 스레드 완료 대기용
 
-        // then
+        // when
         // 모든 스레드에서 동시에 요청 시작
         for (int i = 0; i < numOfThreads; i++) {
             // 각 스레드에서 지갑 생성 시도
@@ -109,9 +109,10 @@ public class WalletServiceIntgTest {
         }
 
         // 최대 10초 대기 (너무 오래 걸리면 타임아웃)
-        latch.await(); // 모든 스레드 완료 대기
+        latch.await();      // 모든 스레드 완료 대기
         service.shutdown(); // 스레드풀 종료
 
+        // then
         // 최종적으로 DB에 지갑이 1개만 존재하는지 확인
         List<Wallet> wallets = walletRepository.findAll();
         // 지갑은 유일하게 1개만 존재해야 한다

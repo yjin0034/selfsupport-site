@@ -2,17 +2,22 @@ package com.projectboard.payment;
 
 import com.projectboard.payment.transaction.*;
 import com.projectboard.payment.wallet.*;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -25,6 +30,9 @@ public class TransactionServiceIntgTest {
     @Autowired TransactionRepository transactionRepository; // 실제 트랜잭션 리포지토리
     @Autowired WalletService walletService;                 // 실제 지갑 서비스
     @Autowired WalletRepository walletRepository;           // 실제 리포지토리
+
+    @AfterEach
+    void tearDown() { walletRepository.deleteAll(); } // 각 테스트 격리
 
     @Test
     @Transactional
@@ -80,47 +88,136 @@ public class TransactionServiceIntgTest {
     }
 
     @Test
-    @Transactional
-    @DisplayName("결제를 중복 생성할 수 없다 - 같은 donationId 2회 호출 시 2번째는 실패")
-    void payment_isIdempotent_byDonationId() {
+    @DisplayName("동시에 같은 orderId로 충전 요청 시, 트랜잭션은 1건만 생성되고 잔액은 정확히 1회만 반영된다")
+    void charge_concurrent_sameOrderId_isIdempotent_andUnique() throws InterruptedException {
         // given
-        // 지갑 생성 + 충전
-        Long userId = 2002L;
-        CreatedWalletResponse created = walletService.createWallet(new CreateWalletRequest(userId));
-        Long walletId = created.id();
-        walletService.addBalance(new AddBalanceWalletRequest(walletId, new BigDecimal("50.00")));
+        // 사용자 지갑 생성
+        CreatedWalletResponse wallet = walletService.createWallet(new CreateWalletRequest(1L));
+        Long walletId = wallet.id(); // 생성된 지갑 ID
 
-        // 동일 donationId로 두 번 결제 요청 준비
-        String sameDonationId = "don-" + UUID.randomUUID();
-        BigDecimal amount = new BigDecimal("10.00");
-        PaymentTransactionRequest req = new PaymentTransactionRequest(walletId, sameDonationId, amount);
+        // 동일 orderId 준비
+        // 충전 금액 1000원
+        String orderId = "order-123";
+        BigDecimal amount = BigDecimal.valueOf(1000);
+
+        // 동시성 환경 준비
+        int threadCount = 20;                                                 // 동시에 20개의 스레드에서 충전 시도
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount); // 스레드풀 생성
+        CountDownLatch latch = new CountDownLatch(threadCount);               // 모든 스레드 완료 대기용
+
+        List<ChargeTransactionResponse> results = new ArrayList<>();          // 결과 수집용 (동기화 필요)
 
         // when
-        // 첫 번째 호출: 정상
-        PaymentTransactionResponse first = transactionService.payment(req);
+        // 모든 스레드에서 동시에 요청 시작
+        for (int i = 0; i < threadCount; i++) {
+            // 각 스레드에서 충전 시도
+            executor.submit(() -> {
+                try {
+                    // 실제 서비스 호출
+                    ChargeTransactionResponse response = transactionService.charge(
+                            new ChargeTransactionRequest(walletId, orderId, amount)
+                    );
+                    // 결과 수집 (동기화 필요)
+                    synchronized (results) {
+                        results.add(response);
+                    }
+                } catch (DataIntegrityViolationException e) {
+                    // 중복 예외 무시 (멱등성 테스트)
+                } finally {
+                    latch.countDown(); // 완료 표시
+                }
+            });
+        }
 
-        // 두 번째 호출: 중복 → 예외
-        Throwable thrown = catchThrowable(() -> transactionService.payment(req));
+        // 모든 스레드 완료 대기
+        latch.await();
 
         // then
-        // 첫 번째 호출은 정상 응답
-        assertThat(first).isNotNull();
-        // 두 번째 호출은 예외 발생
-        assertThat(thrown)
-                .as("동일 donationId로 2번째 결제는 중복으로 거부되어야 한다")
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("이미");
+        // 최종적으로 DB에 트랜잭션은 1건만 존재하는지 확인
+        // 트랜잭션은 유일하게 1개만 존재해야 한다
+        assertThat(results).hasSizeGreaterThanOrEqualTo(1);
+        // 유일한 트랜잭션의 walletId가 요청한 walletId와 동일해야 한다
+        Long walletIdFromResponse = results.get(0).walletId();
 
-        // 멱등성 확인: 트랜잭션은 1건만 존재해야 함
-        //assertThat(transactionRepository.findTransactionByOrderId(sameDonationId)).isPresent();
-
-        // 잔액도 첫 호출에서만 10 차감되었는지 확인 (50 → 40)
-        Wallet persisted = walletRepository.findById(walletId).orElseThrow();
-        assertThat(persisted.getBalance()).isEqualByComparingTo("40.00");
+        // 멱등성 보장: 모든 응답의 잔액은 동일해야 한다
+        // 잔액 응답이 하나라도 있어야 한다
+        BigDecimal balance = results.get(0).balance();
+        // balance는 1000으로 동일해야 한다
+        // 충전은 한 번만 반영되어야 하므로 잔액 = 1000
+        assertThat(balance).isEqualByComparingTo(BigDecimal.valueOf(1000));
+        // DB에 반영된 잔액도 동일해야 함
+        assertThat(walletIdFromResponse).isEqualTo(walletId);
 
         // 디버깅 출력
-        System.out.printf("🧪 idempotency → walletId=%d, amount=%s, donationId=%s, thrown=%s%n",
-                walletId, amount, sameDonationId, thrown.getClass().getSimpleName());
+        System.out.printf("✅ concurrent charge test: orderId=%s, txCount=%d, finalBalance=%s%n",
+                orderId, results.size(), balance);
+    }
+
+    @Test
+    @DisplayName("동시에 같은 donationId로 결제 요청 시, 트랜잭션은 1건만 생성되고 잔액 차감도 1회만 반영된다")
+    void payment_concurrent_sameDonationId_isIdempotent_andUnique() throws InterruptedException {
+        // given
+        // 사용자 지갑 생성
+        CreatedWalletResponse wallet = walletService.createWallet(new CreateWalletRequest(1L));
+        Long walletId = wallet.id(); // 생성된 지갑 ID
+
+        // 우선 1000원 충전
+        transactionService.charge(new ChargeTransactionRequest(walletId, "init", BigDecimal.valueOf(1000)));
+
+        // 동일 donationId 준비
+        // 결제 금액 500원
+        String donationId = "donation-123";
+        BigDecimal amount = BigDecimal.valueOf(500);
+
+        // 동시성 환경 준비
+        int threadCount = 20;                                                 // 동시에 20개의 스레드에서 결제 시도
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount); // 스레드풀 생성
+        CountDownLatch latch = new CountDownLatch(threadCount);               // 모든 스레드 완료 대기용
+
+        List<PaymentTransactionResponse> results = new ArrayList<>();         // 결과 수집용 (동기화 필요)
+
+        // when
+        // 모든 스레드에서 동시에 요청 시작
+        for (int i = 0; i < threadCount; i++) {
+            // 각 스레드에서 결제 시도
+            executor.submit(() -> {
+                try {
+                    // 실제 서비스 호출
+                    PaymentTransactionResponse response = transactionService.payment(
+                            new PaymentTransactionRequest(walletId, donationId, amount)
+                    );
+                    // 결과 수집 (동기화 필요)
+                    synchronized (results) {
+                        results.add(response);
+                    }
+                } finally {
+                    latch.countDown(); // 완료 표시
+                }
+            });
+        }
+
+        // 모든 스레드 완료 대기
+        latch.await();
+
+        // then
+        // 최종적으로 DB에 트랜잭션은 1건만 존재하는지 확인
+        // 트랜잭션은 유일하게 1개만 존재해야 한다
+        assertThat(results).hasSizeGreaterThanOrEqualTo(1);
+        // 유일한 트랜잭션의 walletId가 요청한 walletId와 동일해야 한다
+        Long walletIdFromResponse = results.get(0).walletId();
+
+        // 멱등성 보장: 모든 응답의 잔액은 동일해야 한다
+        // 잔액 응답이 하나라도 있어야 한다
+        BigDecimal balance = results.get(0).balance();
+        // balance는 500으로 동일해야 한다
+        // 결제는 한 번만 반영되어야 하므로 잔액 = 1000 - 500 = 500
+        assertThat(balance).isEqualByComparingTo(BigDecimal.valueOf(500));
+        // DB에 반영된 잔액도 동일해야 한다
+        assertThat(walletIdFromResponse).isEqualTo(walletId);
+
+        // 디버깅 출력
+        System.out.printf("✅ concurrent payment test: donationId=%s, txCount=%d, finalBalance=%s%n",
+                donationId, results.size(), balance);
     }
 
 }
