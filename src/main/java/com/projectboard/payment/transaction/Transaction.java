@@ -12,27 +12,51 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Entity
 @Data
+@Table( // 트랜잭션 테이블, orderId에 고유 제약 조건(Unique Constraint) 설정
+        name = "transaction",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_trasaction_order", columnNames = "order_id"
+        )
+)
 public class Transaction {
-
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.IDENTITY) // 기본 키, 자동 생성
     private Long id;
 
+    @Column(nullable = false)
     private Long userId;
 
+    @Column(nullable = false)
     private Long walletId;
 
+    @Column(nullable = false, unique = true, length =  100) // null 금지, 고유 제약 조건, 길이 100
     private String orderId;
 
     @Enumerated(EnumType.STRING)
     private TransactionType transactionType;
 
+    @Column(nullable = false, precision = 19, scale = 2) // 19자리 숫자, 소수점 이하 2자리
     private BigDecimal amount;
+
     private String description;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    // createdAt, updatedAt 자동 설정
+    @PrePersist
+    void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = this.createdAt;
+    }
+
+    // updatedAt 자동 갱신
+    @PreUpdate
+    void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    // ===== 팩토리 메서드 =====
     // 충전 트랜잭션 생성 메서드
     public static Transaction createChargeTransaction(
             Long userId, Long walletId, String orderId,
