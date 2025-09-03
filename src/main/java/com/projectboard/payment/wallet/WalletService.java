@@ -18,10 +18,11 @@ public class WalletService {
     private final WalletRepository walletRepository;
 
     // ===== 지갑 생성(멱등) =====
-    // 멱등성 보장: userId에 고유 제약 조건(Unique Constraint) 설정
     @Transactional
     public CreatedWalletResponse createWallet(CreateWalletRequest request) {
+        // 멱등성 보장: userId에 고유 제약 조건(Unique Constraint) 설정
         // 1. 먼저 DB에 insert 시도
+        // userId가 없으면 새로 생성
         try {
             // 새로운 지갑 생성
             Wallet wallet = walletRepository.save(new Wallet(request.userId()));

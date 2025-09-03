@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 )
 public class Wallet {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.IDENTITY) // 기본 키, 자동 생성
     private Long id;
 
     @Column(name = "user_id", nullable = false) // null 금지, 고유 제약 조건은 @Table에서 설정
