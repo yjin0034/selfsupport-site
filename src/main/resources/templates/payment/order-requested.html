@@ -1,0 +1,66 @@
+<!-- 결제 성공 후 호출되는 페이지.
+    - URL 파라미터에서 결제 정보를 추출하고, 서버에 결제 승인 요청을 보냄
+    - 결제 승인에 실패하면 실패 페이지로 리디렉션 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+</head>
+<body>
+<h2>결제 성공</h2>
+<p id="paymentKey"></p>
+<p id="orderId"></p>
+<p id="amount"></p>
+
+<script>
+    // URLSearchParams 객체를 사용하여 쿼리 파라미터 추출
+    const urlParams = new URLSearchParams(window.location.search);  // URL의 쿼리 파라미터를 가져옴
+    const paymentKey = urlParams.get("paymentKey");                 // paymentKey 값 추출
+    const orderId = urlParams.get("orderId");                       // orderId 값 추출
+    const amount = urlParams.get("amount");                         // amount 값 추출
+
+    // 결제 승인 API 요청
+    async function confirm() {
+        const requestData = {
+            paymentKey: paymentKey,
+            orderId: orderId,
+            amount: amount,
+        };
+
+        // 서버의 /confirm 엔드포인트로 결제 승인 요청
+        const response = await fetch("/confirm", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(requestData),
+        });
+
+        // 응답 데이터를 JSON으로 파싱
+        const json = await response.json();
+
+        // 결제 실패 시 처리
+        if (!response.ok) {
+            // 결제 실패 비즈니스 로직을 구현하세요.
+            console.log(json);
+            window.location.href = `/fail?message=${json.message}&code=${json.code}`;
+        }
+
+        // 결제 성공 비즈니스 로직을 구현하세요.
+        console.log(json);
+    }
+
+    // 페이지 로드 시 결제 승인 요청
+    confirm();
+
+    // 결제 정보를 화면에 표시
+    const paymentKeyElement = document.getElementById("paymentKey");
+    const orderIdElement = document.getElementById("orderId");
+    const amountElement = document.getElementById("amount");
+
+    orderIdElement.textContent = "주문번호: " + orderId;
+    amountElement.textContent = "결제 금액: " + amount;
+    paymentKeyElement.textContent = "paymentKey: " + paymentKey;
+</script>
+</body>
+</html>

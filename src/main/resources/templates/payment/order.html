@@ -1,0 +1,65 @@
+<!-- 설명: 결제 페이지
+    - 결제 위젯을 렌더링하고, 결제 요청을 처리하는 페이지 -->
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="utf-8" />
+    <script src="https://js.tosspayments.com/v1/payment-widget"></script>
+</head>
+<body>
+<!-- 결제 UI, 이용약관 UI 영역 -->
+<div id="payment-method"></div>
+<div id="agreement"></div>
+<!-- 후원명, 가격, requestId, customerKey -->
+<p th:text="${donationName}"></p>
+<p th:text="${amount}"></p>
+<p th:text="${requestId}"></p>
+<p th:text="${customerKey}"></p>
+
+<!-- 결제하기 버튼 -->
+<button id="payment-button">결제하기</button>
+
+<script>
+    // 결제에 필요한 정보 설정
+    const coupon = document.getElementById("coupon-box");
+    const button = document.getElementById("payment-button");
+    const amount = `[[${amount}]]`
+    const orderName = `[[${donationName}]]`
+    const orderId = `[[${requestId}]]`
+    // 구매자의 고유 아이디를 불러와서 customerKey로 설정하세요.
+    const customerKey = `[[${customerKey}]]`
+
+    // 테스트용 고객 키입니다. 실제 서비스에서는 회원의 고유값으로 설정하세요.
+    const widgetClientKey = "test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm";
+    // PaymentWidget 객체 생성
+    // customerKey는 회원의 고유값으로 설정해야 합니다.
+    const paymentWidget = PaymentWidget(widgetClientKey, customerKey); // 고객 고유값 설정
+
+    // 결제 수단, 이용약관 UI 렌더링
+    const paymentMethodWidget = paymentWidget.renderPaymentMethods(
+        "#payment-method",
+        { value: amount },
+        { variantKey: "DEFAULT" }
+    );
+
+    // 이용약관 UI 렌더링
+    paymentWidget.renderAgreement(
+        "#agreement",
+        { variantKey: "AGREEMENT" }
+    );
+
+    // 결제하기 버튼에 클릭 이벤트 설정
+    button.addEventListener("click", function () {
+        paymentWidget.requestPayment({      // 결제 요청
+            orderId: orderId,
+            orderName: orderName,
+            successUrl: window.location.origin + "/order-requested",
+            failUrl: window.location.origin + "/fail",
+            customerEmail: "customer123@gmail.com",
+            customerName: "김토스",
+            customerMobilePhone: "01012341234",
+        });
+    });
+</script>
+</body>
+</html>
