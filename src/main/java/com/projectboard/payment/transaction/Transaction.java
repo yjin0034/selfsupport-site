@@ -8,6 +8,11 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 트랜잭션 엔티티
+ * - 사용자 ID, 지갑 ID, 주문 ID, 트랜잭션 유형, 금액, 설명, 생성 및 수정 시간 포함.
+ * - 충전 및 결제 트랜잭션 생성 팩토리 메서드 제공.
+ */
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
