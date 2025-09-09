@@ -9,6 +9,19 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 지갑 엔티티
+ * - id: 지갑 ID (기본 키, 자동 생성)
+ * - userId: 사용자 ID (고유 제약 조건)
+ * - balance: 현재 잔액 (null 금지, 소수점 이하 2자리)
+ * - version: 낙관적 락용 버전 필드
+ * - createdAt: 생성 일시 (자동 설정)
+ * - updatedAt: 수정 일시 (자동 갱신)
+ *
+ * 도메인 규칙:
+ * - 충전(charge): 양수만 허용, 최대 한도 준수
+ * - 결제(spend): 양수만 허용, 잔액 부족 금지
+ */
 @Getter
 @NoArgsConstructor
 @AllArgsConstructor

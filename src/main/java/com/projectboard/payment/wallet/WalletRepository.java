@@ -6,6 +6,11 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * 지갑 리포지토리 인터페이스
+ * - JpaRepository를 상속하여 기본 CRUD 기능 제공
+ * - 사용자 ID로 지갑 조회, 개수 조회, 모든 지갑 조회 기능 추가
+ */
 @Repository
 public interface WalletRepository extends JpaRepository<Wallet, Long> {
     // 특정 사용자의 지갑 조회
