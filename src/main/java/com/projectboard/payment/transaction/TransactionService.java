@@ -8,6 +8,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+
+/**
+ * 트랜잭션 서비스
+ * - 충전 및 결제 트랜잭션 처리를 담당.
+ * - 멱등성 보장 및 잔액 업데이트 로직 포함.
+ */
 @Service
 @RequiredArgsConstructor
 public class TransactionService {
@@ -101,4 +108,20 @@ public class TransactionService {
             return new PaymentTransactionResponse(existing.getWalletId(), existing.getAmount());
         }
     }
+
+    // TODO: PG 결제 기록 저장 로직 구현 필요
+    // - 실제 PG 연동 후 구현
+    // - 임시 더미 메서드
+    public void pgPayment() {
+
+        // 임시: 더미 결제 기록 저장
+        final Transaction transaction = Transaction.createPaymentTransaction(
+                1L, 20L,
+                "30", new BigDecimal(1000)
+        );
+        transactionRepository.save(
+                transaction
+        );
+    }
+
 }
