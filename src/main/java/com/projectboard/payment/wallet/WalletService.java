@@ -9,6 +9,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 
+/**
+ * 지갑 서비스
+ * - 지갑 생성, 조회, 잔액 변경(충전/차감) 기능 제공.
+ * - 멱등성 보장 및 낙관적 락 재시도 로직 포함.
+ */
 @RequiredArgsConstructor
 @Service
 public class WalletService {
@@ -101,6 +106,7 @@ public class WalletService {
                 if (attempt == maxRetry) throw e;
             }
         }
+            // 3. 재시도 초과 시 예외
             throw new IllegalStateException("동시성 업데이트 재시도 초과");
     }
 
