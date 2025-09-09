@@ -1,21 +1,28 @@
 package com.projectboard.payment.checkout;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.projectboard.payment.order.Order;
+import com.projectboard.payment.order.OrderRepository;
+import com.projectboard.payment.processing.PaymentProcessingService;
+import com.projectboard.payment.order.OrderStatus;
+import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.client.RestClient;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
+/**
+ * 체크아웃 컨트롤러
+ * - 주문 생성, 결제 페이지 진입, 결제 승인 처리 등을 담당.
+ * - 결제 성공 및 실패 페이지 렌더링.
+ */
 @Slf4j
 @Controller
+@AllArgsConstructor
 public class CheckoutController {
     /*
     TODO:
@@ -43,7 +50,7 @@ public class CheckoutController {
         - 환불 상태를 사용자에게 알림.
 
     6. UI/UX 개선 (선택 사항)
-        - 결제 페이지의 사용자 경험 개선.
+        - 후원 페이지 및 결제 페이지 디자인 개선.
         - 마이페이지에서 후원 및 결제 내역 확인 기능 추가.
         - 관리자 페이지에서 결제 및 환불 내역 관리 기능 추가.
 
@@ -60,6 +67,51 @@ public class CheckoutController {
         - 결제 관련 API 호출 시, 인증 및 권한 부여 구현.
         - 민감한 정보(예: 시크릿 키) 보호.
     */
+
+    private final OrderRepository orderRepository;
+    private final PaymentProcessingService paymentProcessingService;
+
+    /**
+     * 주문 생성 페이지
+     * - 사용자가 결제할 금액과 주문 ID를 확인하는 화면.
+     * - templates/payment/order.html 뷰를 렌더링.
+     */
+    @GetMapping("/order")
+    public String order(
+            @RequestParam("userId") Long userId,
+            @RequestParam("amount") String amount,
+            @RequestParam("donationId") Long donationId,
+            @RequestParam("donationName") String donationName,
+            Model model
+    ) {
+        Order order = new Order();
+        order.setAmount(new BigDecimal(amount));
+        order.setDonationId(donationId);
+        order.setDonationName(donationName);
+        order.setUserId(userId);
+        order.setRequestId(UUID.randomUUID().toString());
+        order.setStatus(OrderStatus.WAIT);
+        order.setCreatedAt(LocalDateTime.now());
+        order.setUpdatedAt(LocalDateTime.now());
+        orderRepository.save(order);
+
+        model.addAttribute("donationName", donationName);
+        model.addAttribute("requestId", order.getRequestId());
+        model.addAttribute("amount", amount);
+        model.addAttribute("customerKey", "customerKey-" + userId);
+
+        return "payment/order";
+    }
+
+    /**
+     * 주문 요청 페이지
+     * - 사용자가 결제할 금액과 주문 ID를 확인하는 화면.
+     * - templates/payment/order-requested.html 뷰를 렌더링.
+     */
+    @GetMapping("/order-requested")
+    public String orderRequested() {
+        return "payment/order-requested";
+    }
 
     /**
      * 결제 페이지 진입
@@ -82,9 +134,9 @@ public class CheckoutController {
     }
 
     /**
-     * 결제 성공 페이지
-     * - Toss 결제 성공 후 redirect 될 URL
-     * - templates/payment/success.html 렌더링
+     * 결제 실패 페이지
+     * - Toss 결제 실패 후 redirect 될 URL
+     * - templates/payment/fail.html 렌더링
      */
     @GetMapping("/fail")
     public String fail() {
@@ -97,51 +149,31 @@ public class CheckoutController {
      * - 서버는 이 데이터를 Toss Payments API로 전달하여 결제를 "승인(confirm)"함.
      * - 이 과정을 통해 결제가 최종적으로 확정되고, DB에 내역을 저장할 수 있음.
      */
-    @RequestMapping(value = "/confirm")
-    public ResponseEntity<Object> confirmPayment(@RequestBody String jsonBody) throws Exception {
-        // 1. 프론트엔드에서 전달받은 JSON(body)을 파싱
-        final JsonNode jsonNode = new ObjectMapper().readTree(jsonBody);
+    @RequestMapping(method = RequestMethod.POST, value = "/confirm")
+    public ResponseEntity<Object> confirmPayment(@RequestBody ConfirmRequest confirmRequest) throws Exception {
+       /*
+       1. 주문 서비스 - 주문 상태가 변경됨 -> REQUESTED
+       2. 주문 서비스 - 결제 서비스 승인 요청 (POST API /confirm)
+       3. 결제 서비스 - PG 승인 요청
+       4. 결제 서비스 - 결제 기록 저장
+          - 결제 수단으로 바로 결제하는 메서드 구현
+       ...
+       6. 주문 서비스에 응답
+       7. 주문 서비스에서 주문 상태가 변경됨 -> APPROVED
+       8. 주문 서비스 - 후원 내역 저장
+        */
 
-        // 2. ConfirmRequest DTO로 변환 (결제승인 API에 필요한 필드만 추출)
-        final ConfirmRequest request = new ConfirmRequest(
-                jsonNode.get("paymentKey").asText(), // 결제 고유키
-                jsonNode.get("orderId").asText(),    // 주문 ID
-                jsonNode.get("amount").asText()      // 결제 금액
-        );
+        // 1. 주문 상태 변경 (WAIT -> REQUESTED)
+        Order order = orderRepository.findByRequestId(confirmRequest.orderId());
+        order.setUpdatedAt(LocalDateTime.now());
+        order.setStatus(OrderStatus.REQUESTED);
+        orderRepository.save(order);
 
-        // 3. Toss Payments 인증 헤더 생성
-        // - Toss API는 Basic Auth 방식 사용
-        // - 사용자명: 시크릿 키, 비밀번호: 없음
-        // - "시크릿키:" 문자열을 Base64 인코딩하여 Authorization 헤더에 포함
-        String widgetSecretKey = "test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6";     // 테스트용 시크릿 키
-        Base64.Encoder encoder = Base64.getEncoder();                          // Base64 인코더
-        byte[] encodedBytes = encoder.encode((widgetSecretKey + ":").getBytes(StandardCharsets.UTF_8)); // "시크릿키:" 문자열을 UTF-8 바이트로 변환 후 Base64 인코딩
-        String authorizations = "Basic " + new String(encodedBytes);           // "Basic " 접두어를 붙여 최종 인증 문자열 생성
+        // 2. 결제 승인 요청
+        paymentProcessingService.createPayment(confirmRequest);
 
-        // 4. RestClient로 Toss Payments API 호출
-        RestClient defaultClient = RestClient.create();
-
-        // 5. POST 요청을 보내고, 응답을 Object 타입으로 매핑
-        final Object object = defaultClient.post()                             // HTTP POST 요청
-                .uri("https://api.tosspayments.com/v1/payments/confirm")   // 결제 승인 API URL
-                .headers(httpHeaders -> {                           // 요청 헤더 설정
-                    httpHeaders.set("Authorization", authorizations);          // 인증 헤더
-                    httpHeaders.set("Content-Type", "application/json");       // 요청 바디 JSON 형식
-                })
-                .contentType(MediaType.APPLICATION_JSON)                       // 요청 Content-Type
-                .body(request)                                                 // 요청 본문 (ConfirmRequest 직렬화됨)
-                .retrieve()                                                    // 요청 전송
-                .toEntity(Object.class);                                       // 응답을 Object 타입으로 매핑
-
-        // 6. Toss에서 받은 응답을 클라이언트로 그대로 반환
-        return ResponseEntity.ok(object);
+        // 3. 주문 서비스에 응답
+        return ResponseEntity.ok(null);
     }
-
-    /**
-     * Confirm API 요청에 필요한 DTO
-     * - paymentKey/orderId/amount 필드만 포함
-     */
-    public record ConfirmRequest(String paymentKey, String orderId, String amount
-    ) {}
 
 }
