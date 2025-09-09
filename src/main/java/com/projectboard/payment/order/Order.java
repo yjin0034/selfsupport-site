@@ -8,6 +8,11 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+/**
+ * 주문 엔티티
+ * - 사용자 주문 정보를 저장.
+ * - 주문 상태 및 관련 메타데이터 포함.
+ */
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
