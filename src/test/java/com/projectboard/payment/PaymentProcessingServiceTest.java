@@ -6,6 +6,8 @@ import com.projectboard.payment.order.Order;
 import com.projectboard.payment.order.OrderRepository;
 import com.projectboard.payment.order.OrderStatus;
 import com.projectboard.payment.processing.PaymentProcessingService;
+import com.projectboard.payment.transaction.ChargeTransactionRequest;
+import com.projectboard.payment.transaction.ChargeTransactionResponse;
 import com.projectboard.payment.transaction.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -13,11 +15,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.extension.TestWatcher;
+import org.mockito.ArgumentCaptor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -83,7 +88,8 @@ public class PaymentProcessingServiceTest {
                 "1000"
         );
 
-        // OrderRepository가 특정 주문을 반환하도록 설정
+        // ===== OrderRepository 스텁 설정 =====
+        // Order 생성 및 초기 상태 설정
         Order order = new Order();               // 새로운 주문 객체 생성
         order.setStatus(OrderStatus.REQUESTED);  // 초기 상태 설정
         order.setUpdatedAt(LocalDateTime.now()); // 초기 업데이트 시간 설정
@@ -97,16 +103,20 @@ public class PaymentProcessingServiceTest {
         paymentProcessingService.createPayment(confirmRequest);
 
         // then
-        // PG 승인 요청 확인
+        // 1. PG 승인 요청 확인
+        // 1번 호출되었는지 검증
         then(paymentGatewayService).should(times(1)).confirm(confirmRequest);
 
-        // 결제 기록 저장 확인
+        // 2. 결제 기록 생성 확인
+        // 1번 호출되었는지 검증
         then(transactionService).should(times(1)).pgPayment();
 
-        // 주문 상태가 APPROVED 로 변경되었는지 확인
+        // 3. 주문 상태가 APPROVED 로 변경되었는지 확인
+        // order 객체의 상태가 APPROVED인지 검증
         assertThat(order.getStatus()).isEqualTo(OrderStatus.APPROVED);
 
-        // 주문 저장이 호출되었는지 확인
+        // 4. 주문 저장이 호출되었는지 확인
+        // 1번 호출되었는지 검증
         then(orderRepository).should(times(1)).save(order);
 
         // 그 외 불필요한 호출 없음
@@ -117,4 +127,65 @@ public class PaymentProcessingServiceTest {
         // 디버깅 출력
         System.out.println("Updated Order Status: " + order.getStatus());
     }
+
+    @Test
+    @DisplayName("PG 결제 충전 성공 시 충전 기록이 생성되고 주문이 APPROVED 된다")
+    void createCharge_success() {
+        // given
+        // ConfirmRequest 생성
+        ConfirmRequest confirmRequest = new ConfirmRequest(
+                "paymentKey-123",
+                "orderId-123",
+                "5000" // 결제 금액 문자열
+        );
+
+        // ===== OrderRepository 스텁 설정 =====
+        // Order 생성 및 초기 상태 설정
+        Order order = new Order();
+        order.setUserId(10L);                           // 사용자 ID 설정
+        order.setRequestId(confirmRequest.orderId());   // 요청 ID 설정
+        order.setStatus(OrderStatus.WAIT);              // 초기 상태 WAIT 설정
+        order.setUpdatedAt(LocalDateTime.now());        // 초기 업데이트 시간 설정
+
+        // orderRepository가 confirmRequest.orderId()로 호출될 때 order 객체를 반환하도록 스텁 설정
+        given(orderRepository.findByRequestId(confirmRequest.orderId()))
+                .willReturn(order);
+
+        // ===== TransactionService 스텁 설정 =====
+        // transactionService.charge() 호출 시 ChargeTransactionResponse 반환하도록 스텁 설정
+        given(transactionService.charge(any(ChargeTransactionRequest.class)))
+                .willReturn(new ChargeTransactionResponse(order.getUserId(), BigDecimal.valueOf(5000)));
+
+        // when
+        // 결제 처리 서비스의 createCharge 메서드 호출
+        paymentProcessingService.createCharge(confirmRequest);
+
+        // then
+        // 1. PG 승인 요청이 호출되었는지 확인
+        // 1번 호출되었는지 검증
+        then(paymentGatewayService).should(times(1)).confirm(confirmRequest);
+
+        // 2. 트랜잭션 충전 기록이 생성되었는지 확인
+        ArgumentCaptor<ChargeTransactionRequest> captor = ArgumentCaptor.forClass(ChargeTransactionRequest.class); // ArgumentCaptor 생성
+        then(transactionService).should(times(1)).charge(captor.capture());                  // charge 메서드가 1번 호출되었는지 검증 및 인자 캡처
+
+        // 캡처된 인자 검증
+        ChargeTransactionRequest passedReq = captor.getValue();                                       // 캡처된 인자 가져오기
+        assertThat(passedReq.walletId()).isEqualTo(order.getUserId());                                // userId 검증
+        assertThat(passedReq.orderId()).isEqualTo(confirmRequest.orderId());                          // orderId 검증
+        assertThat(passedReq.amount()).isEqualByComparingTo(new BigDecimal(confirmRequest.amount())); // amount 검증
+
+        // 3. 주문 상태가 APPROVED 되었는지 확인
+        // order 객체의 상태가 APPROVED인지 검증
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.APPROVED);
+
+        // 4. 주문 저장이 호출되었는지 확인
+        // 1번 호출되었는지 검증
+        then(orderRepository).should(times(1)).save(order);
+
+        // 디버깅 출력
+        System.out.printf("✅ orderId=%s, userId=%d, status=%s%n",
+                order.getRequestId(), order.getUserId(), order.getStatus());
+    }
+
 }
