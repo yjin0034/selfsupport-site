@@ -1,3 +1,4 @@
+<!-- 결제 성공 페이지 -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -10,20 +11,21 @@
 <p id="amount"></p>
 
 <script>
-    // 쿼리 파라미터 값이 결제 요청할 때 보낸 데이터와 동일한지 반드시 확인하세요.
-    // 클라이언트에서 결제 금액을 조작하는 행위를 방지할 수 있습니다.
+    // URLSearchParams 객체를 사용하여 쿼리 파라미터 추출
     const urlParams = new URLSearchParams(window.location.search);
     const paymentKey = urlParams.get("paymentKey");
     const orderId = urlParams.get("orderId");
     const amount = urlParams.get("amount");
 
+    // 결제 승인 API 요청
     async function confirm() {
-        const requestData = {
+        const requestData = {   // 요청 데이터 객체 생성
             paymentKey: paymentKey,
             orderId: orderId,
             amount: amount,
         };
 
+        // 서버의 /confirm 엔드포인트로 결제 승인 요청
         const response = await fetch("/confirm", {
             method: "POST",
             headers: {
@@ -32,8 +34,10 @@
             body: JSON.stringify(requestData),
         });
 
+        // 응답 데이터를 JSON으로 파싱
         const json = await response.json();
 
+        // 결제 실패 시 처리
         if (!response.ok) {
             // 결제 실패 비즈니스 로직을 구현하세요.
             console.log(json);
@@ -43,12 +47,16 @@
         // 결제 성공 비즈니스 로직을 구현하세요.
         console.log(json);
     }
+
+    // 페이지 로드 시 결제 승인 요청
     confirm();
 
+    // 결제 정보를 화면에 표시
     const paymentKeyElement = document.getElementById("paymentKey");
     const orderIdElement = document.getElementById("orderId");
     const amountElement = document.getElementById("amount");
 
+    // 화면에 결제 정보 표시
     orderIdElement.textContent = "주문번호: " + orderId;
     amountElement.textContent = "결제 금액: " + amount;
     paymentKeyElement.textContent = "paymentKey: " + paymentKey;

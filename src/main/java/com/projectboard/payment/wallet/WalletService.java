@@ -62,6 +62,7 @@ public class WalletService {
         );
     }
 
+    // FIXME: 테스트용이기에 추후 삭제 필요
     // ===== 잔액 변경(충전/차감) + 낙관적 락 재시도 =====
     @Transactional
     public AddBalanceWalletResponse addBalance(AddBalanceWalletRequest request) {
