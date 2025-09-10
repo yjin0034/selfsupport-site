@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 @Table( // 트랜잭션 테이블, orderId에 고유 제약 조건(Unique Constraint) 설정
         name = "transaction",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_trasaction_order", columnNames = "order_id"
+                name = "uk_transaction_order", columnNames = "order_id"
         )
 )
 public class Transaction {
