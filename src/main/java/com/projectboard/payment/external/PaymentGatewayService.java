@@ -23,6 +23,7 @@ public class PaymentGatewayService {
     private static final String SECRET = "test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6";        // 테스트용 시크릿 키
     private static final String URL = "https://api.tosspayments.com/v1/payments/confirm"; // 결제 승인 API URL
 
+    // TODO: 에러 처리 구현 필요
     // 결제 승인 요청
     // - ConfirmRequest 객체를 받아 Toss Payments API에 승인 요청을 보냄
     public void confirm(ConfirmRequest confirmRequest) {
