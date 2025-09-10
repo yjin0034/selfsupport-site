@@ -60,6 +60,10 @@ tasks.named('test') {
     useJUnitPlatform()
 }
 
+springBoot {
+    mainClass = 'com.projectboard.payment.PaymentSystemApplication'
+}
+
 
 // Querydsl 설정부
 def generated = 'src/main/generated'
