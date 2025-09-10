@@ -1,0 +1,26 @@
+<!-- 충전 결제 실패 페이지 -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8" />
+</head>
+
+<body>
+<h2> 충전 실패 </h2>
+<p id="code"></p>
+<p id="message"></p>
+</body>
+</html>
+
+<script>
+    // URLSearchParams 객체를 사용하여 쿼리 파라미터 추출
+    const urlParams = new URLSearchParams(window.location.search);
+
+    // 에러 코드와 메시지를 화면에 표시
+    const codeElement = document.getElementById("code");
+    const messageElement = document.getElementById("message");
+
+    // 쿼리 파라미터에서 code와 message 값을 가져와서 표시
+    codeElement.textContent = "에러코드: " + urlParams.get("code");
+    messageElement.textContent = "실패 사유: " + urlParams.get("message");
+</script>
