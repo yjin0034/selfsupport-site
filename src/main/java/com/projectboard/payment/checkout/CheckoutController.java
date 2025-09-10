@@ -24,7 +24,7 @@ import java.util.UUID;
 @Controller
 @AllArgsConstructor
 public class CheckoutController {
-    /*
+    /**
     TODO:
     1. checkout 페이지 렌더링 시 orderId 를 만들어줘야 한다.
         - orderId 는 고유해야 한다. (ex: UUID)
@@ -66,7 +66,7 @@ public class CheckoutController {
     9. 보안 강화
         - 결제 관련 API 호출 시, 인증 및 권한 부여 구현.
         - 민감한 정보(예: 시크릿 키) 보호.
-    */
+     */
 
     private final OrderRepository orderRepository;
     private final PaymentProcessingService paymentProcessingService;
@@ -114,26 +114,6 @@ public class CheckoutController {
     }
 
     /**
-     * 결제 페이지 진입
-     * - 사용자가 결제 버튼을 눌렀을 때 열리는 화면.
-     * - templates/payment/checkout.html 뷰를 렌더링.
-     */
-    @GetMapping("/checkout")
-    public String checkout() {
-        return "payment/checkout";
-    }
-
-    /**
-     * 결제 성공 페이지
-     * - Toss 결제 성공 후 redirect 될 URL
-     * - templates/payment/success.html 렌더링
-     */
-    @GetMapping("/success")
-    public String success() {
-        return "payment/success";
-    }
-
-    /**
      * 결제 실패 페이지
      * - Toss 결제 실패 후 redirect 될 URL
      * - templates/payment/fail.html 렌더링
@@ -151,18 +131,6 @@ public class CheckoutController {
      */
     @RequestMapping(method = RequestMethod.POST, value = "/confirm")
     public ResponseEntity<Object> confirmPayment(@RequestBody ConfirmRequest confirmRequest) throws Exception {
-       /*
-       1. 주문 서비스 - 주문 상태가 변경됨 -> REQUESTED
-       2. 주문 서비스 - 결제 서비스 승인 요청 (POST API /confirm)
-       3. 결제 서비스 - PG 승인 요청
-       4. 결제 서비스 - 결제 기록 저장
-          - 결제 수단으로 바로 결제하는 메서드 구현
-       ...
-       6. 주문 서비스에 응답
-       7. 주문 서비스에서 주문 상태가 변경됨 -> APPROVED
-       8. 주문 서비스 - 후원 내역 저장
-        */
-
         // 1. 주문 상태 변경 (WAIT -> REQUESTED)
         Order order = orderRepository.findByRequestId(confirmRequest.orderId());
         order.setUpdatedAt(LocalDateTime.now());
