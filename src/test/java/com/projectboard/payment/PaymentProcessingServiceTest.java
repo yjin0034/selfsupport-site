@@ -6,6 +6,7 @@ import com.projectboard.payment.order.Order;
 import com.projectboard.payment.order.OrderRepository;
 import com.projectboard.payment.order.OrderStatus;
 import com.projectboard.payment.processing.PaymentProcessingService;
+import com.projectboard.payment.transaction.ChargeTransactionResponse;
 import com.projectboard.payment.transaction.TransactionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,10 +15,12 @@ import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.extension.TestWatcher;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
@@ -85,12 +88,18 @@ public class PaymentProcessingServiceTest {
 
         // OrderRepository가 특정 주문을 반환하도록 설정
         Order order = new Order();               // 새로운 주문 객체 생성
+        order.setUserId(123L);                   // 사용자 ID 설정
+        order.setRequestId("orderId");           // 주문 ID 설정
         order.setStatus(OrderStatus.REQUESTED);  // 초기 상태 설정
         order.setUpdatedAt(LocalDateTime.now()); // 초기 업데이트 시간 설정
 
         // orderRepository가 confirmRequest.orderId()로 호출될 때 order 객체를 반환하도록 스텁 설정
         given(orderRepository.findByRequestId(confirmRequest.orderId()))
                 .willReturn(order);
+
+        // transactionService.pgPayment()가 성공적으로 반환하도록 스텁 설정
+        given(transactionService.pgPayment(any(Long.class), any(String.class), any(BigDecimal.class)))
+                .willReturn(new ChargeTransactionResponse(123L, new BigDecimal("1000")));
 
         // when
         // 결제 처리 서비스의 createPayment 메서드 호출
@@ -100,8 +109,9 @@ public class PaymentProcessingServiceTest {
         // PG 승인 요청 확인
         then(paymentGatewayService).should(times(1)).confirm(confirmRequest);
 
-        // 결제 기록 저장 확인
-        then(transactionService).should(times(1)).pgPayment();
+        // 결제 기록 저장 확인 - 새로운 시그니처로 호출되는지 확인
+        then(transactionService).should(times(1))
+                .pgPayment(order.getUserId(), order.getRequestId(), new BigDecimal("1000"));
 
         // 주문 상태가 APPROVED 로 변경되었는지 확인
         assertThat(order.getStatus()).isEqualTo(OrderStatus.APPROVED);
@@ -109,12 +119,9 @@ public class PaymentProcessingServiceTest {
         // 주문 저장이 호출되었는지 확인
         then(orderRepository).should(times(1)).save(order);
 
-        // 그 외 불필요한 호출 없음
-        // then(paymentGatewayService).shouldHaveNoMoreInteractions();
-        // then(transactionService).shouldHaveNoMoreInteractions();
-        // then(orderRepository).shouldHaveNoMoreInteractions();
-
         // 디버깅 출력
         System.out.println("Updated Order Status: " + order.getStatus());
+        System.out.println("Transaction service called with userId: " + order.getUserId() 
+                + ", orderId: " + order.getRequestId() + ", amount: 1000");
     }
 }

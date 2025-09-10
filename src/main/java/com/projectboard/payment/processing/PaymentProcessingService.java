@@ -9,6 +9,7 @@ import com.projectboard.payment.transaction.TransactionService;
 import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
@@ -38,15 +39,28 @@ public class PaymentProcessingService {
        8. 주문 서비스 - 후원 내역 저장
         */
 
+        // 주문 정보 조회
+        final Order order = orderRepository.findByRequestId(confirmRequest.orderId());
+        if (order == null) {
+            throw new IllegalArgumentException("주문을 찾을 수 없습니다: " + confirmRequest.orderId());
+        }
+
         // PG 승인 요청
         paymentGatewayService.confirm(confirmRequest);
 
-        // FIXME: pgPayment() 메서드 내에서 결제 기록 저장 로직 구현 필요
-        // 결제 기록 저장
-        transactionService.pgPayment();
+        // 결제 기록 저장 및 지갑 충전 처리
+        // confirmRequest.amount()를 BigDecimal로 변환
+        BigDecimal amount;
+        try {
+            amount = new BigDecimal(confirmRequest.amount());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("유효하지 않은 금액 형식: " + confirmRequest.amount(), e);
+        }
+
+        // PG 결제를 통한 충전 처리
+        transactionService.pgPayment(order.getUserId(), order.getRequestId(), amount);
 
         // 주문 상태 변경
-        final Order order = orderRepository.findByRequestId(confirmRequest.orderId());
         order.setStatus(OrderStatus.APPROVED);
         order.setUpdatedAt(LocalDateTime.now());
         orderRepository.save(order);

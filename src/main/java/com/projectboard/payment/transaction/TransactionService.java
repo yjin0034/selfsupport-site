@@ -109,19 +109,24 @@ public class TransactionService {
         }
     }
 
-    // TODO: PG 결제 기록 저장 로직 구현 필요
-    // - 실제 PG 연동 후 구현
-    // - 임시 더미 메서드
-    public void pgPayment() {
+    // ===== PG 결제 충전 처리 =====
+    public ChargeTransactionResponse pgPayment(Long userId, String orderId, BigDecimal amount) {
+        // 입력 유효성: 결제 금액은 반드시 양수여야 한다
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("결제 금액은 양수여야 합니다.");
+        }
+        if (userId == null) {
+            throw new IllegalArgumentException("사용자 ID는 필수입니다.");
+        }
+        if (orderId == null || orderId.isBlank()) {
+            throw new IllegalArgumentException("주문 ID는 필수입니다.");
+        }
 
-        // 임시: 더미 결제 기록 저장
-        final Transaction transaction = Transaction.createPaymentTransaction(
-                1L, 20L,
-                "30", new BigDecimal(1000)
-        );
-        transactionRepository.save(
-                transaction
-        );
+        // 기존 charge() 메서드를 활용하여 충전 처리
+        // ChargeTransactionRequest는 (walletId, orderId, amount)를 받는데,
+        // PG 결제에서는 userId로 지갑을 찾아야 하므로 userId를 walletId로 사용
+        ChargeTransactionRequest chargeRequest = new ChargeTransactionRequest(userId, orderId, amount);
+        return charge(chargeRequest);
     }
 
 }

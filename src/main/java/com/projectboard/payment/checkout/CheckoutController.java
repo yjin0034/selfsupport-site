@@ -163,17 +163,55 @@ public class CheckoutController {
        8. 주문 서비스 - 후원 내역 저장
         */
 
-        // 1. 주문 상태 변경 (WAIT -> REQUESTED)
-        Order order = orderRepository.findByRequestId(confirmRequest.orderId());
-        order.setUpdatedAt(LocalDateTime.now());
-        order.setStatus(OrderStatus.REQUESTED);
-        orderRepository.save(order);
+        try {
+            // 1. 주문 상태 변경 (WAIT -> REQUESTED)
+            Order order = orderRepository.findByRequestId(confirmRequest.orderId());
+            if (order == null) {
+                log.error("주문을 찾을 수 없습니다: {}", confirmRequest.orderId());
+                return ResponseEntity.badRequest().body("주문을 찾을 수 없습니다.");
+            }
 
-        // 2. 결제 승인 요청
-        paymentProcessingService.createPayment(confirmRequest);
+            order.setUpdatedAt(LocalDateTime.now());
+            order.setStatus(OrderStatus.REQUESTED);
+            orderRepository.save(order);
 
-        // 3. 주문 서비스에 응답
-        return ResponseEntity.ok(null);
+            // 2. 결제 승인 요청 (PG 승인, 충전 처리, 주문 완료까지)
+            paymentProcessingService.createPayment(confirmRequest);
+
+            log.info("결제 승인 완료: orderId={}, amount={}", confirmRequest.orderId(), confirmRequest.amount());
+
+            // 3. 주문 서비스에 응답
+            return ResponseEntity.ok(null);
+
+        } catch (IllegalArgumentException e) {
+            log.error("결제 승인 실패 - 잘못된 요청: {}", e.getMessage());
+            // 주문 상태를 FAIL로 변경
+            updateOrderStatusToFail(confirmRequest.orderId(), e.getMessage());
+            return ResponseEntity.badRequest().body("결제 요청이 유효하지 않습니다: " + e.getMessage());
+            
+        } catch (Exception e) {
+            log.error("결제 승인 실패 - 시스템 오류: orderId={}, error={}", confirmRequest.orderId(), e.getMessage(), e);
+            // 주문 상태를 FAIL로 변경
+            updateOrderStatusToFail(confirmRequest.orderId(), e.getMessage());
+            return ResponseEntity.status(500).body("결제 처리 중 오류가 발생했습니다.");
+        }
+    }
+
+    /**
+     * 주문 상태를 FAIL로 변경하는 헬퍼 메서드
+     */
+    private void updateOrderStatusToFail(String orderId, String errorMessage) {
+        try {
+            Order order = orderRepository.findByRequestId(orderId);
+            if (order != null) {
+                order.setStatus(OrderStatus.FAIL);
+                order.setUpdatedAt(LocalDateTime.now());
+                orderRepository.save(order);
+                log.info("주문 상태를 FAIL로 변경: orderId={}, error={}", orderId, errorMessage);
+            }
+        } catch (Exception ex) {
+            log.error("주문 상태 변경 실패: orderId={}", orderId, ex);
+        }
     }
 
 }
