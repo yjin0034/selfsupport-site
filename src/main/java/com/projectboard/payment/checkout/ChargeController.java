@@ -91,7 +91,8 @@ public class ChargeController {
         orderRepository.save(order);
 
         // 2. 결제 서비스 - 충전 처리
-        paymentProcessingService.createCharge(confirmRequest);
+        // - isRetry: false (재시도 아님)
+        paymentProcessingService.createCharge(confirmRequest, false);
 
         // 3. 주문 서비스에 응답
         return ResponseEntity.ok(null);
