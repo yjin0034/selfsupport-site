@@ -1,3 +1,4 @@
+# 결제 서비스 테스트용 설정파일
 debug: false
 management:
   endpoints:
@@ -44,4 +45,4 @@ spring:
   thymeleaf3.decoupled-logic: true
 
 pg:
-  url: https://api.tosspayments.com/v1/payments/confirm # 토스페이먼츠 실제 API
+  url: https://c83cf442-fa9a-497e-b749-b34e2def113a.mock.pstmn.io/confirm # 포스트맨 mock 서버
