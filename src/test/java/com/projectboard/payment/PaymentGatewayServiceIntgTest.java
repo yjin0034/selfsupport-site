@@ -9,12 +9,14 @@ import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.extension.TestWatcher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 
 import java.util.Optional;
 
 @SpringBootTest
 @ExtendWith(SpringExtension.class)
+@ActiveProfiles("payment-test") // application-payment-test.yml 설정 사용
 public class PaymentGatewayServiceIntgTest {
 
     // 테스트 결과 로거: 성공/실패/중단/비활성 상태 콘솔 출력
@@ -53,8 +55,8 @@ public class PaymentGatewayServiceIntgTest {
         // 실제 결제 승인 API 호출
         paymentGatewayService.confirm(
                 new ConfirmRequest(
-                        "tgen_20250909194737fMDG2",
-                        "9d4e4aae-1e1c-47a0-a4ba-9e6ba07b4653",
+                        "tgen_20250911175019QWb15",
+                        "1bd23f7a-9009-41f1-a1da-638a85050d0b",
                         "1000"
                 )
         );
