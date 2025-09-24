@@ -45,4 +45,5 @@ spring:
   thymeleaf3.decoupled-logic: true
 
 pg:
-  url: https://c83cf442-fa9a-497e-b749-b34e2def113a.mock.pstmn.io/confirm # 포스트맨 mock 서버
+  url: http://localhost:8080/pg-mock                                       # 로컬에 띄운 모의 PG 서버. 통합 테스트용
+  #url: https://c83cf442-fa9a-497e-b749-b34e2def113a.mock.pstmn.io/confirm # 포스트맨 mock 서버. timeout 테스트용
