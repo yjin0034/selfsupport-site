@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.junit.jupiter.SpringExtension;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,17 +25,27 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+/**
+ * WalletService 통합 테스트
+ * - 실제 DB와 스프링 컨텍스트를 사용하여 지갑 서비스의 주요 기능을 검증
+ * - 지갑 생성, 잔액 충전, 동시성 테스트를 통해 멱등성 및 데이터 무결성 보장 확인
+ * - application-payment-test.yml 설정 사용
+ */
 @SpringBootTest
 @ExtendWith(SpringExtension.class)
+@ActiveProfiles("payment-test") // application-payment-test.yml 설정 사용
 public class WalletServiceIntgTest {
+    // ===== 의존성 주입 =====
+    // SUT
+    @Autowired WalletService walletService;                 // 실제 지갑 서비스
+    // 의존성 주입
+    @Autowired WalletRepository walletRepository;           // 실제 리포지토리
 
-    @Autowired
-    WalletService walletService;
-    @Autowired
-    WalletRepository walletRepository;
-
+    // 각 테스트 격리
     @AfterEach
-    void tearDown() { walletRepository.deleteAll(); } // 각 테스트 격리
+    void tearDown() {
+        walletRepository.deleteAll();         // 트랜잭션이 지갑에 종속되어 있으므로, 지갑부터 삭제해야 함
+    }
 
     @Test
     @Transactional
