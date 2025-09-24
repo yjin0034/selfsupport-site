@@ -41,24 +41,37 @@ public class PaymentProcessingService {
 
     private ObjectMapper objectMapper;                          // JSON 객체 매퍼
 
-    // ===== 결제 처리 =====
-    // - 결제 승인 요청 및 결제 기록 저장
-    // - 주문 상태 업데이트 및 후원 내역 저장
+    /**
+     * 결제 생성
+     * - 결제 승인 요청 및 결제 기록 저장
+     * - 주문 상태 업데이트 및 후원 내역 저장
+     *
+     * @param confirmRequest 결제 승인 요청 정보
+     */
     public void createPayment(ConfirmRequest confirmRequest) {
         // PG 승인 요청
         paymentGatewayService.confirm(confirmRequest);
 
-        // FIXME: pgPayment() 메서드 내에서 결제 기록 저장 로직 구현 필요
         // 결제 기록 저장
-        transactionService.pgPayment();
+        transactionService.pgPayment(
+                    null,
+                    confirmRequest.orderId(),
+                    new BigDecimal(confirmRequest.amount()),
+                    confirmRequest.paymentKey()
+        );
 
         // 주문 상태 변경
         approveOrder(confirmRequest.orderId());
     }
 
-    // ===== 충전 처리 =====
-    // - 결제 승인 요청 및 충전 기록 저장
-    // - 주문 상태 업데이트 및 충전 내역 저장
+    /**
+     * 충전 생성
+     * - 결제 승인 요청 및 충전 기록 저장
+     * - 주문 상태 업데이트 및 충전 내역 저장
+     *
+     * @param confirmRequest 결제 승인 요청 정보
+     * @param isRetry 재시도 여부 (true: 재시도, false: 최초 시도)
+     */
     public void createCharge(ConfirmRequest confirmRequest, boolean isRetry) {
         // 예외 처리
         // - PG 승인 요청 중 예외 발생 시 재시도 요청 생성
@@ -107,9 +120,14 @@ public class PaymentProcessingService {
         approveOrder(confirmRequest.orderId());
     }
 
-    // ===== 재시도 요청 생성 =====
-    // - 결제 승인 요청 실패 시, 재시도 요청을 생성하여 저장
-    // - 예외 메시지와 요청 데이터를 함께 저장
+    /**
+     * 재시도 요청 생성
+     * - 결제 승인 요청 실패 시, 재시도 요청을 생성하여 저장
+     * - 예외 메시지와 요청 데이터를 함께 저장
+     *
+     * @param confirmRequest
+     * @param e
+     */
     @SneakyThrows
     private void createRetryRequest(ConfirmRequest confirmRequest, Exception e) {
         // 재시도 요청 객체 생성
@@ -124,8 +142,12 @@ public class PaymentProcessingService {
         retryRepository.save(retryRequest);
     }
 
-    // ===== 주문 상태 변경 =====
-    // - 주문 상태를 APPROVED로 변경하고 수정 시간 업데이트
+    /**
+     * 주문 승인 처리
+     * - 주문 상태를 APPROVED로 변경하고 수정 시간 업데이트
+     *
+     * @param orderId 주문 ID
+     */
     private void approveOrder(String orderId) {
         final Order order = orderRepository.findByRequestId(orderId); // 주문 조회
         order.setStatus(OrderStatus.APPROVED);                        // 주문 상태 변경
