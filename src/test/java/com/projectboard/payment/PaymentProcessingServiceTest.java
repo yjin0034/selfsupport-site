@@ -36,49 +36,61 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.*;
 import static org.mockito.Mockito.times;
 
+/**
+ * PaymentProcessingService 단위 테스트
+ * - 결제 처리 서비스의 주요 기능을 단위 테스트로 검증
+ * - PG 승인, 결제 기록 생성, 주문 상태 변경 등 핵심 시나리오 포함
+ * - Timeout 예외 발생 시 재시도 요청 저장 및 재시도 후 정상 처리 검증
+ * - Mockito를 사용하여 외부 의존성 모킹
+ */
 @ExtendWith(MockitoExtension.class)
 public class PaymentProcessingServiceTest {
-
     // 테스트 결과 로거: 성공/실패/중단/비활성 상태 콘솔 출력
     @RegisterExtension
     static TestWatcher logWatcher = new TestWatcher() {
         @Override
+        // 테스트가 성공한 경우
         public void testSuccessful(ExtensionContext context) {
             System.out.println("✅ PASSED: " + context.getDisplayName());
         }
 
         @Override
+        // 테스트가 실패한 경우
         public void testFailed(ExtensionContext context, Throwable cause) {
             System.err.println("❌ FAILED: " + context.getDisplayName());
             cause.printStackTrace(); // 빨간 스택트레이스 출력
         }
 
         @Override
+        // 테스트가 중단된 경우
         public void testAborted(ExtensionContext context, Throwable cause) {
             System.err.println("⚠️ ABORTED: " + context.getDisplayName());
         }
 
         @Override
+        // 테스트가 비활성화된 경우
         public void testDisabled(ExtensionContext context, Optional<String> reason) {
             System.out.println("⏸ DISABLED: " + context.getDisplayName() +
                     reason.map(r -> " — " + r).orElse(""));
         }
     };
 
-    // System under test
+    // ===== 의존성 주입 =====
+    // SUT
     private PaymentProcessingService paymentProcessingService;      // 결제 처리 서비스 (테스트 대상)
     private RetryRequestService retryRequestService;                // 재시도 요청 서비스 (테스트 대상)
-
-    // Mocked dependencies
+    // 의존성 주입
     @Mock private PaymentGatewayService paymentGatewayService;       // PG 서비스 (모킹)
     @Mock private TransactionService transactionService;             // 거래 서비스 (모킹)
     @Mock private OrderRepository orderRepository;                   // 주문 리포지토리 (모킹)
     @Mock private RetryRequestRepository retryRequestRepository;     // 재시도 리포지토리 (모킹)
 
-    private final ObjectMapper objectMapper = new ObjectMapper();    // JSON 처리용 ObjectMapper
+    // JSON 처리용 ObjectMapper
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @BeforeEach
+    // 각 테스트 전에 실행
     // 각 테스트 전에 실행되어 모킹된 의존성을 초기화하고 서비스 인스턴스를 생성
+    @BeforeEach
     void setUp() {
         // PaymentProcessingService 인스턴스 생성
         paymentProcessingService = new PaymentProcessingService(
@@ -129,7 +141,12 @@ public class PaymentProcessingServiceTest {
 
         // 2. 결제 기록 생성 확인
         // 1번 호출되었는지 검증
-        then(transactionService).should(times(1)).pgPayment();
+        then(transactionService).should(times(1)).pgPayment(
+                null,
+                confirmRequest.orderId(),
+                new BigDecimal(confirmRequest.amount()),
+                confirmRequest.paymentKey()
+        );
 
         // 3. 주문 상태가 APPROVED 로 변경되었는지 확인
         // order 객체의 상태가 APPROVED인지 검증
@@ -209,6 +226,8 @@ public class PaymentProcessingServiceTest {
                 order.getRequestId(), order.getUserId(), order.getStatus());
     }
 
+    // ⚠️ 이 테스트는 Timeout 상황을 모킹(Mock)하여 RetryRequest 저장 동작을 검증함.
+    // 실제 네트워크 Timeout이 아니라 RestClientException(SocketTimeoutException) 을 강제로 발생시켜 테스트.
     @Test
     @DisplayName("Timeout 발생 시 RetryRequest 를 저장하고 예외를 다시 던진다")
     void createCharge_timeout_savesRetryAndThrows() {
