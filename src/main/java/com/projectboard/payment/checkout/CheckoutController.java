@@ -6,13 +6,17 @@ import com.projectboard.payment.processing.PaymentProcessingService;
 import com.projectboard.payment.order.OrderStatus;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -29,46 +33,86 @@ public class CheckoutController {
     private final PaymentProcessingService paymentProcessingService;    // 결제 처리 서비스
 
     /**
-     * 주문 생성 페이지
+     * 주문 페이지
      * - 사용자가 결제할 금액과 주문 ID를 확인하는 화면.
+     * - 멱등성 보장을 위한 requestId 처리 포함.
      * - templates/payment/order.html 뷰를 렌더링.
+     *
+     * @param userId        사용자 ID
+     * @param amountQS     결제 금액 (문자열)
+     * @param donationId    후원 ID
+     * @param donationName  후원 이름
+     * @param requestIdFromQS 멱등성 보장을 위한 requestId (선택적)
+     * @param model         뷰 모델
+     * @return 주문 페이지 뷰 이름
      */
     @GetMapping("/order")
     public String order(
             @RequestParam("userId") Long userId,
-            @RequestParam("amount") String amount,
+            @RequestParam("amount") String amountQS,
             @RequestParam("donationId") Long donationId,
             @RequestParam("donationName") String donationName,
             @RequestParam(value = "requestId", required = false) String requestIdFromQS,
             Model model
     ) {
-        Order order;
-        if (requestIdFromQS != null) {
-            order = orderRepository.findByRequestId(requestIdFromQS);
-        } else {
+        // 1. 주문 조회 또는 생성
+        // Order 객체 선언
+        final Order order;
+
+        // 1) requestId가 있으면 해당 주문 조회
+        // 멱등성 보장을 위한 requestId 처리
+        if (StringUtils.hasText(requestIdFromQS)) {
+            // requestId로 주문 조회
+            order = Optional.ofNullable(orderRepository.findByRequestId(requestIdFromQS))                   // 주문 조회
+                    .orElseThrow(() -> new ResponseStatusException(                                         // 주문이 존재하지 않으면 예외 발생
+                            HttpStatus.NOT_FOUND, "주문을 찾을 수 없습니다. requestId=" + requestIdFromQS));    // 404 Not Found 응답
+
+            // 주문의 userId와 요청한 userId가 일치하는지 확인
+            if (!order.getUserId().equals(userId)) {
+                // 일치하지 않으면 403 Forbidden 응답
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "주문 소유자가 일치하지 않습니다.");
+            }
+        }
+        // 2) requestId가 없으면 새 주문 생성
+        else {
+            // amount 파싱
+            BigDecimal amount;
+            // amountQS가 올바른 형식인지 확인
+            try {
+                // BigDecimal로 변환 시도
+                amount = new BigDecimal(amountQS);
+            } catch (NumberFormatException e) { // 변환 실패 시 예외 처리
+                // 잘못된 형식 예외 발생
+                // 400 Bad Request 응답
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "amount 형식이 올바르지 않습니다.");
+            }
+
+            // 새 주문 생성
             order = new Order();
-            order.setAmount(new BigDecimal(amount));
-            order.setUserId(userId);
-            order.setRequestId(java.util.UUID.randomUUID().toString());
-            order.waitStatus();
-            orderRepository.save(order);
+            order.setAmount(amount);                                                        // 주문 금액 설정
+            order.setUserId(userId);                                                        // 사용자 ID 설정
+            order.setRequestId(java.util.UUID.randomUUID().toString());                     // 멱등성 보장을 위한 requestId 생성
+            order.waitStatus();                                                             // 주문 상태를 WAIT로 설정
+            orderRepository.save(order);                                                    // 주문 저장
         }
 
-        // 모델에 주문 정보 추가
-        model.addAttribute("donationName", donationName);                       // 후원 아이템 이름
-        model.addAttribute("requestId", order.getRequestId());                  // 고유 주문 ID
-        model.addAttribute("amount", amount);                                   // 후원 금액
-        model.addAttribute("customerKey", "customerKey-" + userId); // 고객 키 (예: 사용자 ID 기반)
+        // 2. 모델에 주문 정보 추가
+        model.addAttribute("donationName", donationName);                       // 후원 이름
+        model.addAttribute("requestId", order.getRequestId());                  // 주문 요청 ID
+        model.addAttribute("amount", order.getAmount().toPlainString());        // 주문 금액
+        model.addAttribute("customerKey", "customerKey-" + userId);  // 고객 키 (예: "customerKey-1")
 
-        // 주문 페이지 뷰 이름 반환
+        // 3. 주문 페이지 뷰 렌더링
         // templates/payment/order.html
         return "payment/order";
     }
 
     /**
-     * 주문 요청 페이지
-     * - 사용자가 결제할 금액과 주문 ID를 확인하는 화면.
+     * 주문 요청 완료 페이지
+     * - 사용자가 결제를 요청한 후 보여지는 페이지.
      * - templates/payment/order-requested.html 뷰를 렌더링.
+     *
+     * @return 주문 요청 완료 페이지 뷰 이름
      */
     @GetMapping("/order-requested")
     public String orderRequested() {
@@ -77,8 +121,10 @@ public class CheckoutController {
 
     /**
      * 결제 실패 페이지
-     * - Toss 결제 실패 후 redirect 될 URL
-     * - templates/payment/fail.html 렌더링
+     * - Toss 결제 실패 후 리다이렉트될 URL
+     * - templates/payment/fail.html 뷰를 렌더링
+     *
+     * @return 결제 실패 페이지 뷰 이름
      */
     @GetMapping("/fail")
     public String fail() {
@@ -86,10 +132,13 @@ public class CheckoutController {
     }
 
     /**
-     * 결제 승인 API 호출
-     * - 프론트엔드(success.html)에서 결제 성공 시, toss에서 받은 결제 정보를 서버로 전달함.
-     * - 서버는 이 데이터를 Toss Payments API로 전달하여 결제를 "승인(confirm)"함.
-     * - 이 과정을 통해 결제가 최종적으로 확정되고, DB에 내역을 저장할 수 있음.
+     * 결제 승인 API
+     * - 사용자가 결제를 승인할 때 호출되는 엔드포인트.
+     * - 주문 상태를 REQUESTED로 변경하고, 결제 승인 요청을 처리.
+     *
+     * @param confirmRequest 결제 승인 요청 데이터
+     * @return 성공 시 200 OK 응답
+     * @throws Exception 결제 처리 중 예외 발생 시
      */
     @RequestMapping(method = RequestMethod.POST, value = "/confirm")
     public ResponseEntity<Object> confirmPayment(@RequestBody ConfirmRequest confirmRequest) throws Exception {
