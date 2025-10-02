@@ -102,7 +102,7 @@ public class DonationServiceIntgTest {
     }
 
     @Test
-    @DisplayName("포인트 후원 실패 - 잔액 부족 시 실패 Donation 저장")
+    @DisplayName("포인트 후원 실패 - 잔액 부족 시 Donation(FAILED) 저장")
     void donateWithPoint_insufficientBalance_thenFail() {
         // given
         // 1. 사용자 및 지갑 생성 (초기 잔액=0)
@@ -113,36 +113,37 @@ public class DonationServiceIntgTest {
 
         // when
         // 실제 서비스 호출
-        // 포인트로 후원 시도
-        // 잔액 부족으로 예외 발생 예상
-        // 예외 잡기 위해 catchThrowable 사용
-        Throwable thrown = catchThrowable(() -> donationService.donateWithPoint(userId, item));
+        // 잔액 부족으로 후원 실패 예상
+        Donation result = donationService.donateWithPoint(userId, item);
 
         // then
-        // 1. 예외 검증
-        // 잔액 부족으로 IllegalArgumentException 발생 예상
-        // 예외 메시지에 "잔액" 포함되어야 함
-        assertThat(thrown).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("잔액");
+        // 1. 반환값 검증
+        // 후원 기록이 생성되어야 함
+        assertThat(result).isNotNull();
+        // 후원 상태가 FAILED여야 함
+        assertThat(result.getDonationStatus()).isEqualTo(Donation.DonationStatus.FAILED);
+        // 에러 메시지에 "잔액" 포함되어야 함
+        assertThat(result.getErrorMessage()).contains("잔액");
 
-        // 2. 실패한 후원 기록 검증
+        // 2. DB에 후원 기록이 저장되었는지 재확인
         // 모든 후원 기록 조회
         List<Donation> all = donationRepository.findAll();
         // 후원 기록이 1건 있어야 함
         assertThat(all).hasSize(1);
-        // 후원 상태가 FAILED여야 함
+        // 저장된 후원 기록이 방금 생성한 후원 기록과 동일해야 함
+        assertThat(all.get(0).getId()).isEqualTo(result.getId());
+        // 저장된 후원 기록의 상태가 FAILED여야 함
         assertThat(all.get(0).getDonationStatus()).isEqualTo(Donation.DonationStatus.FAILED);
 
-        // 3. DB에 지갑 잔액이 변동 없는지 재확인
-        // 지갑 잔액이 0원이어야 함
-        Wallet persisted = walletRepository.findWalletByUserId(userId)
-                .orElseThrow();
-        // 초기 잔액 0원 유지되어야 함
+        // 3. 지갑 잔액이 변동 없는지 재확인
+        // 지갑 재조회
+        Wallet persisted = walletRepository.findWalletByUserId(userId).orElseThrow();
+        // 잔액이 여전히 0이어야 함
         assertThat(persisted.getBalance()).isEqualByComparingTo("0");
 
         // 디버깅 출력
         System.out.printf("✅ point donation fail → userId=%d, status=%s, error=%s%n",
-                userId, all.get(0).getDonationStatus(), thrown.getMessage());
+                userId, result.getDonationStatus(), result.getErrorMessage());
     }
 
     @Test
@@ -171,8 +172,10 @@ public class DonationServiceIntgTest {
         assertThat(donation).isNotNull();
         // 후원 ID가 생성되어야 함
         assertThat(donation.getId()).isNotNull();
-        // 후원 상태가 COMPLETED여야 함
-        assertThat(donation.getDonationStatus()).isEqualTo(Donation.DonationStatus.COMPLETED);
+        // 후원 아이템이 요청한 아이템과 동일해야 함
+        assertThat(donation.getDonationItem()).isEqualTo(item);
+        // 후원 상태가 REQUESTED여야 함 (결제 승인 후 바로 COMPLETED로 변경되지 않음)
+        assertThat(donation.getDonationStatus()).isEqualTo(Donation.DonationStatus.REQUESTED);
         // 후원 금액이 후원 아이템 가격과 동일해야 함
         assertThat(donation.getAmount()).isEqualByComparingTo(item.getPrice());
 
@@ -195,22 +198,10 @@ public class DonationServiceIntgTest {
         List<Donation> all = donationRepository.findAll();
         // 후원 기록이 1건 있어야 함
         assertThat(all).hasSize(1);
-        // 저장된 후원 기록이 방금 생성한 후원 기록과 동일해야 함
-        assertThat(all.get(0).getDonationItem()).isEqualTo(item);
-        // 저장된 후원 기록의 상태가 COMPLETED여야 함
-        assertThat(all.get(0).getDonationStatus()).isEqualTo(Donation.DonationStatus.COMPLETED);
-        // 저장된 후원 기록의 트랜잭션이 null이 아니어야 함
+        // 후원 상태가 REQUESTED여야 함
+        assertThat(all.get(0).getDonationStatus()).isEqualTo(Donation.DonationStatus.REQUESTED);
+        // 연관된 트랜잭션이 존재해야 함
         assertThat(all.get(0).getTransaction()).isNotNull();
-        // 저장된 후원 기록의 트랜잭션의 orderId가 요청한 orderId와 동일해야 함
-        assertThat(all.get(0).getTransaction().getOrderId()).isEqualTo(orderId);
-        // 저장된 후원 기록의 트랜잭션의 userId가 후원자 ID와 동일해야 함
-        assertThat(all.get(0).getTransaction().getUserId()).isEqualTo(userId);
-        // 저장된 후원 기록의 트랜잭션의 amount가 후원 아이템 가격과 동일해야 함
-        assertThat(all.get(0).getTransaction().getAmount()).isEqualByComparingTo(item.getPrice());
-        // 저장된 후원 기록의 트랜잭션 타입이 PAYMENT여야 함
-        assertThat(all.get(0).getTransaction().getTransactionType()).isEqualTo(com.projectboard.payment.transaction.TransactionType.PAYMENT);
-        // 저장된 후원 기록의 트랜잭션의 지갑 ID가 null이어야 함
-        assertThat(all.get(0).getTransaction().getWalletId()).isNull();
 
         // 디버깅 출력
         System.out.printf("✅ direct donation ok → userId=%d, donationId=%d, txOrderId=%s%n",

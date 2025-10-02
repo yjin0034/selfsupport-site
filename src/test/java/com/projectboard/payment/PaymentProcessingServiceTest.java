@@ -2,6 +2,7 @@ package com.projectboard.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.projectboard.payment.checkout.ConfirmRequest;
+import com.projectboard.payment.donation.DonationService;
 import com.projectboard.payment.external.PaymentGatewayService;
 import com.projectboard.payment.order.Order;
 import com.projectboard.payment.order.OrderRepository;
@@ -83,6 +84,7 @@ public class PaymentProcessingServiceTest {
     @Mock private PaymentGatewayService paymentGatewayService;       // PG 서비스 (모킹)
     @Mock private TransactionService transactionService;             // 거래 서비스 (모킹)
     @Mock private OrderRepository orderRepository;                   // 주문 리포지토리 (모킹)
+    @Mock private DonationService donationService;                   // 후원 서비스 (모킹)
     @Mock private RetryRequestRepository retryRequestRepository;     // 재시도 리포지토리 (모킹)
 
     // JSON 처리용 ObjectMapper
@@ -97,6 +99,7 @@ public class PaymentProcessingServiceTest {
                 paymentGatewayService,
                 transactionService,
                 orderRepository,
+                donationService,
                 retryRequestRepository,
                 objectMapper
         );
@@ -110,7 +113,7 @@ public class PaymentProcessingServiceTest {
     }
 
     @Test
-    @DisplayName("PG 결제 성공 시 결제 기록이 생성되고 주문이 APPROVED 된다")
+    @DisplayName("PG 결제 성공 시 DonationService.completeDirectDonation으로 위임한다")
     void createPayment_success() {
         // given
         // ConfirmRequest 생성
@@ -120,49 +123,22 @@ public class PaymentProcessingServiceTest {
                 "1000"
         );
 
-        // ===== OrderRepository 스텁 설정 =====
-        // Order 생성 및 초기 상태 설정
-        Order order = new Order();               // 새로운 주문 객체 생성
-        order.setStatus(OrderStatus.REQUESTED);  // 초기 상태 설정
-        order.setUpdatedAt(LocalDateTime.now()); // 초기 업데이트 시간 설정
-
-        // orderRepository가 confirmRequest.orderId()로 호출될 때 order 객체를 반환하도록 스텁 설정
-        given(orderRepository.findByRequestId(confirmRequest.orderId()))
-                .willReturn(order);
-
         // when
         // 결제 처리 서비스의 createPayment 메서드 호출
         paymentProcessingService.createPayment(confirmRequest);
 
         // then
-        // 1. PG 승인 요청 확인
-        // 1번 호출되었는지 검증
-        then(paymentGatewayService).should(times(1)).confirm(confirmRequest);
+        // DonationService.completeDirectDonation이 호출되었는지 검증
+        then(donationService).should(times(1)).completeDirectDonation(confirmRequest);
 
-        // 2. 결제 기록 생성 확인
-        // 1번 호출되었는지 검증
-        then(transactionService).should(times(1)).pgPayment(
-                null,
-                confirmRequest.orderId(),
-                new BigDecimal(confirmRequest.amount()),
-                confirmRequest.paymentKey()
-        );
-
-        // 3. 주문 상태가 APPROVED 로 변경되었는지 확인
-        // order 객체의 상태가 APPROVED인지 검증
-        assertThat(order.getStatus()).isEqualTo(OrderStatus.APPROVED);
-
-        // 4. 주문 저장이 호출되었는지 확인
-        // 1번 호출되었는지 검증
-        then(orderRepository).should(times(1)).save(order);
-
-        // 그 외 불필요한 호출 없음
-        // then(paymentGatewayService).shouldHaveNoMoreInteractions();
-        // then(transactionService).shouldHaveNoMoreInteractions();
-        // then(orderRepository).shouldHaveNoMoreInteractions();
+        // 다른 의존성은 호출되지 않았는지 검증
+        // 더 이상 내부에서 직접 수행하지 않음
+        then(paymentGatewayService).shouldHaveNoInteractions();
+        then(transactionService).shouldHaveNoInteractions();
+        then(orderRepository).shouldHaveNoInteractions();
 
         // 디버깅 출력
-        System.out.println("Updated Order Status: " + order.getStatus());
+        System.out.printf("✅ orderId=%s%n", confirmRequest.orderId());
     }
 
     @Test
@@ -240,16 +216,6 @@ public class PaymentProcessingServiceTest {
         RestClientException timeoutEx = new RestClientException("timeout", new SocketTimeoutException("Read timed out"));
         willThrow(timeoutEx).given(paymentGatewayService).confirm(confirmRequest);
 
-        // ===== OrderRepository 스텁 설정 =====
-        // Order 생성 및 초기 상태 설정
-        Order order = new Order();
-        order.setUserId(1L);
-        order.setRequestId(confirmRequest.orderId());
-        order.setUpdatedAt(LocalDateTime.now());
-
-        // orderRepository가 confirmRequest.orderId()로 호출될 때 order 객체를 반환하도록 스텁 설정
-        given(orderRepository.findByRequestId(confirmRequest.orderId())).willReturn(order);
-
         // when & then
         // 결제 처리 서비스의 createCharge 메서드 호출 시 RestClientException 예외가 발생하는지 검증
         // isRetry: false (재시도 아님)
@@ -257,18 +223,21 @@ public class PaymentProcessingServiceTest {
                 .isInstanceOf(RestClientException.class)
                 .hasCauseInstanceOf(SocketTimeoutException.class);
 
-        // 1. PG 승인 요청이 호출되었는지 확인
-        // 1번 호출되었는지 검증
+        // 1. 호출 검증
+        // PG 승인 요청이 1번 호출되었는지 확인
         then(paymentGatewayService).should(times(1)).confirm(confirmRequest);
+        // 트랜잭션 충전 기록이 생성되지 않았는지 확인
+        then(transactionService).should(never()).charge(any());
+        // 주문 저장이 호출되지 않았는지 확인
+        then(orderRepository).shouldHaveNoMoreInteractions();
 
-        // 2. 트랜잭션 충전 기록이 생성되지 않았는지 확인
-        then(transactionService).should(never()).charge(any(ChargeTransactionRequest.class));
+        // 2. RetryRequest 저장 검증
+        // RetryRequest 가 저장되는지 검증하기 위해 ArgumentCaptor 사용
+        ArgumentCaptor<RetryRequest> captor = ArgumentCaptor.forClass(RetryRequest.class);
+        // save 메서드가 1번 호출되었는지 검증 및 인자 캡처
+        then(retryRequestRepository).should(times(1)).save(captor.capture());
 
-        // 3. 주문 상태가 변경되지 않았는지 확인
-        // order 객체의 상태가 변경되지 않았음을 검증
-        ArgumentCaptor<RetryRequest> captor = ArgumentCaptor.forClass(RetryRequest.class);   // ArgumentCaptor 생성
-        then(retryRequestRepository).should(times(1)).save(captor.capture()); // save 메서드가 1번 호출되었는지 검증 및 인자 캡처
-
+        // 3. 저장된 RetryRequest 필드 값 검증
         // 캡처된 RetryRequest 검증
         RetryRequest saved = captor.getValue();
         // saved 객체의 필드 값 검증
@@ -280,12 +249,9 @@ public class PaymentProcessingServiceTest {
         // 에러 응답 메시지에 "timeout" 문자열이 포함되어 있는지 검증
         assertThat(saved.getErrorResponse()).contains("timeout");
 
-        // 4. 주문 저장이 호출되지 않았는지 확인
-        then(orderRepository).should(never()).save(order);
-
         // 디버깅 출력
-        System.out.printf("✅ After Timeout: orderId=%s, userId=%d, status=%s%n",
-                order.getRequestId(), order.getUserId(), order.getStatus());
+        System.out.printf("✅ Saved RetryRequest: requestId=%s, type=%s, status=%s, errorResponse=%s%n",
+                saved.getRequestId(), saved.getType(), saved.getStatus(), saved.getErrorResponse());
     }
 
     @Test

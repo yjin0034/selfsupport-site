@@ -2,6 +2,8 @@ package com.projectboard.payment.processing;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.projectboard.payment.checkout.ConfirmRequest;
+import com.projectboard.payment.donation.Donation;
+import com.projectboard.payment.donation.DonationService;
 import com.projectboard.payment.external.PaymentGatewayService;
 import com.projectboard.payment.order.Order;
 import com.projectboard.payment.order.OrderRepository;
@@ -22,10 +24,9 @@ import java.time.LocalDateTime;
 
 /**
  * 결제 처리 서비스
- * - 결제 승인 요청 및 결제 기록 저장
- * - 충전 승인 요청 및 충전 기록 저장
- * - 주문 상태 업데이트 및 내역 저장
- * - 주문 서비스와 연동
+ * - 후원 결제 생성 및 충전 생성 기능 제공
+ * - 외부 결제 게이트웨이와의 통신, 거래 기록 저장, 주문 상태 업데이트 등 담당
+ * - 재시도 요청 생성 로직 포함
  */
 @Slf4j
 @Service
@@ -34,34 +35,20 @@ public class PaymentProcessingService {
     // ===== 의존성 주입 =====
     private final PaymentGatewayService paymentGatewayService;  // 외부 결제 게이트웨이 서비스
     private final TransactionService transactionService;        // 거래 기록 서비스
-
     private final OrderRepository orderRepository;              // 주문 리포지토리
-
+    private final DonationService donationService;              // 후원 서비스
     private final RetryRequestRepository retryRepository;       // 재시도 요청 리포지토리
-
     private ObjectMapper objectMapper;                          // JSON 객체 매퍼
 
     /**
-     * 결제 생성
-     * - 결제 승인 요청 및 결제 기록 저장
-     * - 주문 상태 업데이트 및 후원 내역 저장
+     * 후원 결제 생성
+     * - 결제 승인 요청 및 후원 기록 저장
      *
      * @param confirmRequest 결제 승인 요청 정보
      */
     public void createPayment(ConfirmRequest confirmRequest) {
-        // PG 승인 요청
-        paymentGatewayService.confirm(confirmRequest);
-
-        // 결제 기록 저장
-        transactionService.pgPayment(
-                    null,
-                    confirmRequest.orderId(),
-                    new BigDecimal(confirmRequest.amount()),
-                    confirmRequest.paymentKey()
-        );
-
-        // 주문 상태 변경
-        approveOrder(confirmRequest.orderId());
+        // PG 승인 요청 및 결제 기록 저장
+        donationService.completeDirectDonation(confirmRequest);
     }
 
     /**
@@ -117,7 +104,7 @@ public class PaymentProcessingService {
         );
 
         // 주문 상태 변경
-        approveOrder(confirmRequest.orderId());
+        approveOrder(order);
     }
 
     /**
@@ -144,12 +131,11 @@ public class PaymentProcessingService {
 
     /**
      * 주문 승인 처리
-     * - 주문 상태를 APPROVED로 변경하고 수정 시간 업데이트
+     * - 주문 상태를 APPROVED로 변경하고, 수정 시각 업데이트 후 저장
      *
-     * @param orderId 주문 ID
+     * @param order 승인할 주문 객체
      */
-    private void approveOrder(String orderId) {
-        final Order order = orderRepository.findByRequestId(orderId); // 주문 조회
+    private void approveOrder(Order order) {
         order.setStatus(OrderStatus.APPROVED);                        // 주문 상태 변경
         order.setUpdatedAt(LocalDateTime.now());                      // 주문 수정 시간 업데이트
         orderRepository.save(order);                                  // 변경 사항 저장
