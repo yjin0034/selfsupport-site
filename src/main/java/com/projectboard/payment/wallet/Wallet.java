@@ -26,7 +26,7 @@ public class Wallet {
     @GeneratedValue(strategy = GenerationType.IDENTITY)             // 기본 키, 자동 생성
     private Long id;
 
-    @Column(name = "user_id", nullable = false, unique = true)      // null 금지, 고유 제약 조건
+    @Column(name = "user_id", nullable = false)                     // null 금지, 고유 제약 조건은 @Table에서 설정
     private Long userId;
 
     @Column(nullable = false, precision = 19, scale = 2)            // 19자리 숫자, 소수점 이하 2자리
