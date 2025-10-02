@@ -1,31 +1,21 @@
 package com.projectboard.payment.wallet;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * 지갑 엔티티
- * - id: 지갑 ID (기본 키, 자동 생성)
- * - userId: 사용자 ID (고유 제약 조건)
- * - balance: 현재 잔액 (null 금지, 소수점 이하 2자리)
- * - version: 낙관적 락용 버전 필드
- * - createdAt: 생성 일시 (자동 설정)
- * - updatedAt: 수정 일시 (자동 갱신)
- *
- * 도메인 규칙:
- * - 충전(charge): 양수만 허용, 최대 한도 준수
- * - 결제(spend): 양수만 허용, 잔액 부족 금지
+ * - 사용자 ID에 고유 제약 조건(Unique Constraint) 설정
+ * - 잔액(balance)은 BigDecimal로 표현, 소수점 이하 2자리까지 허용
+ * - 낙관적 락을 위한 버전 필드 포함
+ * - 생성일(createdAt)과 수정일(updatedAt) 자동 관리
  */
 @Getter
+@Setter
 @NoArgsConstructor
-@AllArgsConstructor
-@Data
 @Entity
 @Table( // 지갑 테이블, userId에 고유 제약 조건(Unique Constraint) 설정
         name = "wallet", // 테이블명 지정
@@ -33,24 +23,25 @@ import java.time.LocalDateTime;
 )
 public class Wallet {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY) // 기본 키, 자동 생성
+    @GeneratedValue(strategy = GenerationType.IDENTITY)             // 기본 키, 자동 생성
     private Long id;
 
-    @Column(name = "user_id", nullable = false) // null 금지, 고유 제약 조건은 @Table에서 설정
+    @Column(name = "user_id", nullable = false, unique = true)      // null 금지, 고유 제약 조건
     private Long userId;
 
-    @Column(nullable = false, precision = 19, scale = 2) // 19자리 숫자, 소수점 이하 2자리
-    private BigDecimal balance;
+    @Column(nullable = false, precision = 19, scale = 2)            // 19자리 숫자, 소수점 이하 2자리
+    private BigDecimal balance = BigDecimal.ZERO;                   // null 금지, 기본값 0
 
     @Version
-    private Long version; // 낙관적 락용 버전 필드
+    @Column(nullable = false)                                       // null 금지
+    private Long version = 0L;                                      // 낙관적 락 버전 필드, 기본값 0
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
     public Wallet(Long userId) {
         this.userId = userId;
-        this.balance = new BigDecimal(0);
+        this.balance = BigDecimal.ZERO;
         this.createdAt = LocalDateTime.now();
         this.updatedAt = LocalDateTime.now();
     }
