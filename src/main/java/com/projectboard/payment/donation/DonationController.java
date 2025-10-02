@@ -1,25 +1,15 @@
 package com.projectboard.payment.donation;
 
 import com.projectboard.payment.checkout.ConfirmRequest;
-import com.projectboard.payment.order.Order;
-import com.projectboard.payment.order.OrderRepository;
-import com.projectboard.payment.order.OrderStatus;
 import com.projectboard.payment.processing.PaymentProcessingService;
-import com.projectboard.payment.wallet.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.stereotype.Controller;
-import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
-import java.math.BigDecimal;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * DonationController
@@ -50,8 +40,13 @@ public class DonationController {
             @RequestParam("userId") Long userId,
             @RequestParam("item") Donation.DonationItem item
     ) {
-        // 후원 서비스 호출
-        donationService.donateWithPoint(userId, item);
+        // 서비스에서 Donation(REQUESTED, POINT) 생성 및 포인트 차감 처리
+        Donation donation = donationService.donateWithPoint(userId, item);
+
+        // 후원 실패 시 에러 메시지 반환
+        if (donation.getDonationStatus() == Donation.DonationStatus.FAILED) {
+            return ResponseEntity.badRequest().body("포인트 후원 실패");
+        }
 
         // 성공 메시지 반환
         return ResponseEntity.ok("포인트 후원 성공");
