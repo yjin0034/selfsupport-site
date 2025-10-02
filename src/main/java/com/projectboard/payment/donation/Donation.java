@@ -20,7 +20,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Entity
 @Builder
-@Table(name = "donation")
+@Table(
+        name = "donation",                                                                          // 테이블명 지정
+        uniqueConstraints = @UniqueConstraint(name = "uk_donation_order", columnNames = "order_id") // order_id 컬럼에 고유 제약 조건 설정
+)
 public class Donation {
     // ===== 기본 필드 =====
     @Id                                     // 기본 키, 자동 생성
@@ -63,14 +66,20 @@ public class Donation {
     @JoinColumn(name = "wallet_id")                                             // 외래 키 설정
     private Wallet wallet;                                                      // 후원자 지갑 정보 (포인트 후원 시 사용)
 
-    /** 후원과 주문의 연관 관계
-     * - PG 직접 결제 시 사용되는 주문과의 일대일 단방향 연관 관계 설정.
+    /**
+     * 후원과 주문의 연관 관계
+     * - 직접 결제 완료 시 사용되는 주문과의 일대일 단방향 연관 관계 설정.
+     * - Donation가 주인, Order가 종속.
+     * - 직접 후원 시에만 주문이 생성되므로
      * - 포인트 후원 시에는 null이 될 수 있도록 optional=true로 설정.
      * - 모든 영속성 전이 설정(CascadeType.ALL)하여 후원 엔티티가 저장/삭제될 때 연관된 주문 엔티티도 함께 처리.
+     * - order_id 컬럼에 고유 제약 조건(Unique Constraint) 설정하여 1:1 관계 보장.
      */
-    // PG 직접 결제 시 사용되는 주문과의 일대일 단방향 연관 관계 설정
     @OneToOne(fetch = FetchType.LAZY, optional = true, cascade = CascadeType.ALL)
-    @JoinColumn(name= "order_id")                                               // 외래 키 설정
+    @JoinColumn(
+            name= "order_id",                                                   // 외래 키 설정
+            foreignKey = @ForeignKey(name = "fk_donation_order")                // 외래 키 제약 조건 이름 설정
+    )
     private Order order;                                                        // 연관된 주문 (포인트 후원 시 null, 직접 후원 시 주문 정보)
 
     /**
@@ -138,8 +147,8 @@ public class Donation {
     }
 
     // updatedAt 자동 갱신
-    @PreUpdate void
-    onUpdate() { this.updatedAt = LocalDateTime.now(); }
+    @PreUpdate
+    void onUpdate() { this.updatedAt = LocalDateTime.now(); }
 
     // ===== 도메인 규칙 =====
     // 후원 완료 처리 메서드
@@ -154,7 +163,7 @@ public class Donation {
     }
 
     // ===== 연관 관계를 위한 Setter =====
-    // 연관된 지갑 설정 메서드
+    // 연관된 주문 설정 메서드
     public void setOrder(Order order) { this.order = order; }
 
     // 연관된 트랜잭션 설정 메서드

@@ -43,10 +43,11 @@ public class Order {
     private LocalDateTime updatedAt;
 
     // ===== 연관 관계 설정 =====
-    /** 1:1 양방향 연관 관계 설정
-     * - Order가 주인, Donation이 종속
-     * - Order의 PK가 Donation의 FK로 사용
-     * - fetch = FetchType.LAZY로 설정하여 지연 로딩 사용
+    /**
+     * 주문과 후원의 연관 관계
+     * - 1:1 양방향 연관 관계 설정.
+     * - Donation가 주인, Order가 종속.
+     * - fetch=LAZY로 설정하여 필요 시에만 로딩.
      */
     @OneToOne(mappedBy = "order", fetch = FetchType.LAZY)
     private Donation donation;                              // 연관된 후원 엔티티
