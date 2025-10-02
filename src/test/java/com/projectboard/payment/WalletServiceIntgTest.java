@@ -1,5 +1,6 @@
 package com.projectboard.payment;
 
+import com.projectboard.payment.donation.DonationRepository;
 import com.projectboard.payment.wallet.*;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -23,7 +24,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
 
 /**
  * WalletService 통합 테스트
@@ -41,9 +41,12 @@ public class WalletServiceIntgTest {
     // 의존성 주입
     @Autowired WalletRepository walletRepository;           // 실제 리포지토리
 
+    @Autowired DonationRepository donationRepository;
+
     // 각 테스트 격리
     @AfterEach
     void tearDown() {
+        donationRepository.deleteAll();
         walletRepository.deleteAll();         // 트랜잭션이 지갑에 종속되어 있으므로, 지갑부터 삭제해야 함
     }
 
@@ -105,31 +108,42 @@ public class WalletServiceIntgTest {
         int numOfThreads = 20;
         ExecutorService service = Executors.newFixedThreadPool(numOfThreads); // 스레드풀 생성
         CountDownLatch latch = new CountDownLatch(numOfThreads);              // 모든 스레드 완료 대기용
+        // 생성된 지갑 ID를 저장할 동기화된 리스트
+        List<Long> createdIds = Collections.synchronizedList(new ArrayList<>());
 
         // when
-        // 모든 스레드에서 동시에 요청 시작
+        // 여러 스레드에서 동시에 createWallet() 호출
         for (int i = 0; i < numOfThreads; i++) {
-            // 각 스레드에서 지갑 생성 시도
-            service.submit(() -> {
+            service.submit(() -> {  // 스레드풀에서 작업 제출
                 try {
-                    walletService.createWallet(request); // 실제 서비스 호출
+                    var res = walletService.createWallet(new CreateWalletRequest(userId));  // 실제 서비스 호출
+                    createdIds.add(res.id());                                               // 생성된 지갑 ID 저장
                 } finally {
-                    latch.countDown();  // 완료 표시
+                    latch.countDown();                                                      // 작업 완료 신호
                 }
             });
         }
 
-        // 최대 10초 대기 (너무 오래 걸리면 타임아웃)
-        latch.await();      // 모든 스레드 완료 대기
-        service.shutdown(); // 스레드풀 종료
+        // 모든 스레드가 작업을 완료할 때까지 최대 10초 대기
+        boolean finished = latch.await(10, TimeUnit.SECONDS);
+        // 모든 작업이 10초 내에 끝나지 않으면 테스트 실패
+        assertThat(finished).as("동시 작업이 10초 내에 끝나야 함").isTrue();
+        // 스레드풀 종료
+        service.shutdown();
 
         // then
-        // 최종적으로 DB에 지갑이 1개만 존재하는지 확인
+        // 1. 모든 호출이 성공해야 함 (예외 발생하지 않아야 함)
         List<Wallet> wallets = walletRepository.findAll();
-        // 지갑은 유일하게 1개만 존재해야 한다
+        // 2. 지갑은 1개만 생성되어야 함
         assertThat(wallets).hasSize(1);
-        // 유일한 지갑의 userId가 요청한 userId와 동일해야 한다
+        // 3. 생성된 지갑의 userId는 요청한 userId와 동일해야 함
         assertThat(wallets.get(0).getUserId()).isEqualTo(userId);
+
+        // 4. 모든 호출에서 반환된 지갑 ID는 동일해야 함 (멱등성)
+        // Set으로 만들어 중복 제거 후 크기가 1이어야 함
+        assertThat(createdIds.stream().collect(Collectors.toSet())) // Set으로 변환하여 중복 제거
+                .hasSize(1)                                 // 크기가 1이어야 함
+                .containsExactly(wallets.get(0).getId());           // DB에 저장된 지갑 ID와 동일해야 함
 
         // 디버깅 출력
         System.out.printf("✅ 최종 지갑 개수: %d, userId=%d%n", wallets.size(), userId);
