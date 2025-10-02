@@ -16,60 +16,17 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * 체크아웃 컨트롤러
- * - 주문 생성, 결제 페이지 진입, 결제 승인 처리 등을 담당.
- * - 결제 성공 및 실패 페이지 렌더링.
+ * CheckoutController
+ * - 결제 관련 페이지 렌더링 및 결제 승인 API 제공
+ * - 주문 생성, 결제 승인, 결제 실패 페이지 등 처리
  */
 @Slf4j
 @Controller
 @AllArgsConstructor
 public class CheckoutController {
-    /**
-    TODO:
-    1. checkout 페이지 렌더링 시 orderId 를 만들어줘야 한다.
-        - orderId 는 고유해야 한다. (ex: UUID)
-        - 결제 성공 후 주문 내역을 조회할 때 사용된다.
-
-    2. PG 와 주고 받은 데이터를 저장
-        - 요청 -> 승인
-        - 요청 데이터 저장
-        - 승인 데이터 저장
-
-    3. 후원 결제 API 연동
-        - 후원 결제 시, 후원자 정보 및 후원 금액을 함께 처리.
-        - 후원 내역을 데이터베이스에 저장.
-
-    4. 결제 내역 저장 및 관리 기능 구현 (선택 사항)
-        - 결제 내역을 데이터베이스에 저장.
-        - 사용자가 자신의 결제 내역을 조회할 수 있는 기능 추가.
-        - 관리자가 결제 내역을 조회할 수 있는 기능 추가.
-
-    5. 환불 처리 기능 구현 (선택 사항)
-        - 환불 요청 시, 토스페이먼츠 환불 API 호출 구현.
-        - 환불 내역을 데이터베이스에 저장 및 관리.
-        - 환불 상태를 사용자에게 알림.
-
-    6. UI/UX 개선 (선택 사항)
-        - 후원 페이지 및 결제 페이지 디자인 개선.
-        - 마이페이지에서 후원 및 결제 내역 확인 기능 추가.
-        - 관리자 페이지에서 결제 및 환불 내역 관리 기능 추가.
-
-    7. 에러 처리
-        - API 호출 실패 시, 적절한 에러 메시지 반환.
-        - 결제 실패 시, 사용자에게 알림 및 재시도 옵션 제공.
-        - 로그를 통해 에러 원인 분석 및 추적 가능하도록 구현.
-
-    8. 테스트 및 검증
-        - 다양한 결제 시나리오에 대한 테스트 케이스 작성.
-        - 실제 결제 환경에서의 검증.
-
-    9. 보안 강화
-        - 결제 관련 API 호출 시, 인증 및 권한 부여 구현.
-        - 민감한 정보(예: 시크릿 키) 보호.
-     */
-
-    private final OrderRepository orderRepository;
-    private final PaymentProcessingService paymentProcessingService;
+    // ===== 의존성 주입 =====
+    private final OrderRepository orderRepository;                      // 주문 리포지토리
+    private final PaymentProcessingService paymentProcessingService;    // 결제 처리 서비스
 
     /**
      * 주문 생성 페이지
@@ -82,24 +39,29 @@ public class CheckoutController {
             @RequestParam("amount") String amount,
             @RequestParam("donationId") Long donationId,
             @RequestParam("donationName") String donationName,
+            @RequestParam(value = "requestId", required = false) String requestIdFromQS,
             Model model
     ) {
-        Order order = new Order();
-        order.setAmount(new BigDecimal(amount));
-        order.setDonationId(donationId);
-        order.setDonationName(donationName);
-        order.setUserId(userId);
-        order.setRequestId(UUID.randomUUID().toString());
-        order.setStatus(OrderStatus.WAIT);
-        order.setCreatedAt(LocalDateTime.now());
-        order.setUpdatedAt(LocalDateTime.now());
-        orderRepository.save(order);
+        Order order;
+        if (requestIdFromQS != null) {
+            order = orderRepository.findByRequestId(requestIdFromQS);
+        } else {
+            order = new Order();
+            order.setAmount(new BigDecimal(amount));
+            order.setUserId(userId);
+            order.setRequestId(java.util.UUID.randomUUID().toString());
+            order.waitStatus();
+            orderRepository.save(order);
+        }
 
-        model.addAttribute("donationName", donationName);
-        model.addAttribute("requestId", order.getRequestId());
-        model.addAttribute("amount", amount);
-        model.addAttribute("customerKey", "customerKey-" + userId);
+        // 모델에 주문 정보 추가
+        model.addAttribute("donationName", donationName);                       // 후원 아이템 이름
+        model.addAttribute("requestId", order.getRequestId());                  // 고유 주문 ID
+        model.addAttribute("amount", amount);                                   // 후원 금액
+        model.addAttribute("customerKey", "customerKey-" + userId); // 고객 키 (예: 사용자 ID 기반)
 
+        // 주문 페이지 뷰 이름 반환
+        // templates/payment/order.html
         return "payment/order";
     }
 
