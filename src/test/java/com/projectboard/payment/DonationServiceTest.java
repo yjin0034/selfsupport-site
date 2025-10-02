@@ -6,6 +6,9 @@ import com.projectboard.payment.donation.DonationRepository;
 import com.projectboard.payment.donation.DonationResponse;
 import com.projectboard.payment.donation.DonationService;
 import com.projectboard.payment.external.PaymentGatewayService;
+import com.projectboard.payment.order.Order;
+import com.projectboard.payment.order.OrderRepository;
+import com.projectboard.payment.order.OrderStatus;
 import com.projectboard.payment.transaction.Transaction;
 import com.projectboard.payment.transaction.TransactionRepository;
 import com.projectboard.payment.transaction.TransactionService;
@@ -18,12 +21,15 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.extension.ExtensionContext;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.junit.jupiter.api.extension.TestWatcher;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.client.RestClientException;
 
 import java.math.BigDecimal;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -31,9 +37,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.*;
 
 /**
  * DonationServiceTest
@@ -79,6 +83,7 @@ public class DonationServiceTest {
     @Mock private PaymentGatewayService paymentGatewayService;      // 외부 결제 게이트웨이 서비스
     @Mock private TransactionService transactionService;            // 거래 서비스
     @Mock private TransactionRepository transactionRepository;      // 거래 리포지토리
+    @Mock private OrderRepository orderRepository;                  // 주문 리포지토리
     // SUT
     @InjectMocks private DonationService donationService;           // 후원 서비스
 
@@ -100,7 +105,7 @@ public class DonationServiceTest {
     }
 
     @Test
-    @DisplayName("포인트 후원 - 성공 (잔액 충분)")
+    @DisplayName("포인트 후원 - 성공 (지갑 차감 + Donation(COMPLETED) 저장)")
     void donateWithPoint_success() {
         // given
 
@@ -110,26 +115,20 @@ public class DonationServiceTest {
         // ===== 지갑 조회 및 잔액 차감 모킹 =====
         // 지갑 조회 모킹 (사용자 ID로 지갑 조회 시, 미리 생성한 지갑 반환)
         given(walletRepository.findWalletByUserId(userId)).willReturn(Optional.of(wallet));
-        // 지갑 저장 모킹 (변경된 잔액 반영된 지갑 반환)
-        // 잔액 차감 후, 저장된 지갑 객체 반환하도록 설정
-        given(walletRepository.save(any(Wallet.class))).willReturn(wallet);
-
-        // ===== 트랜잭션 생성 모킹 =====
-        // 포인트 후원 트랜잭션 생성
-        // 후원 아이템 가격에 해당하는 포인트 후원 트랜잭션 객체 생성
-        Transaction tx = Transaction.createPointDonationTransaction(userId, wallet.getId(), item.getPrice());
-        // 포인트 후원 트랜잭션 생성 시, 미리 생성한 트랜잭션 객체 반환하도록 설정
-        given(transactionService.createPointDonationTransaction(userId, wallet.getId(), item.getPrice()))
-                .willReturn(tx);
+        // 잔액 차감 모킹 (지갑 저장 시, 잔액에서 후원 아이템 가격 차감)
+        // 실제로는 walletRepository.save(wallet) 호출 시, 잔액이 차감된 상태로 저장됨
+        given(walletRepository.save(any(Wallet.class))).willAnswer(inv -> inv.getArgument(0));
 
         // ===== 후원 저장 모킹 =====
         // 저장된 후원 객체 생성
         Donation savedDonation = Donation.builder()                                     // 후원 엔티티 빌더 패턴으로 생성
-                .id(1L).userId(userId).donationItem(item)                               // 후원자 ID, 아이템 설정
+                .id(1L).userId(userId)                                                  // 후원자 ID 설정
+                .donationItem(item)                                                     // 후원 아이템 설정
                 .amount(item.getPrice())                                                // 후원 금액 설정
                 .donationType(Donation.DonationType.POINT)                              // 포인트 후원 유형 설정
                 .donationStatus(Donation.DonationStatus.COMPLETED)                      // 후원 상태 완료 설정
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())          // 생성/수정 시각 설정
+                .wallet(wallet)                                                         // 연관된 지갑 설정
                 .build();
         // 후원 저장 시, ID가 부여된 후원 객체 반환하도록 설정
         given(donationRepository.save(any(Donation.class))).willReturn(savedDonation);
@@ -140,24 +139,28 @@ public class DonationServiceTest {
 
         // then
         // 결과 검증
+
         // 후원 결과가 null이 아닌지 확인
         assertThat(result).isNotNull();
         // 후원 상태가 COMPLETED인지 확인
         assertThat(result.getDonationStatus()).isEqualTo(Donation.DonationStatus.COMPLETED);
+
         // 후원 금액이 아이템 가격과 일치하는지 확인
         then(walletRepository).should(times(1)).save(wallet);
-        // 잔액이 후원 금액만큼 차감되었는지 확인
-        then(transactionService).should(times(1)).createPointDonationTransaction(userId, wallet.getId(), item.getPrice());
         // 후원 저장이 한 번 호출되었는지 확인
         then(donationRepository).should(times(1)).save(any(Donation.class));
 
+        // 잔액이 10,000 차감되었는지 확인
+        assertThat(wallet.getBalance()).isEqualByComparingTo(BigDecimal.valueOf(40_000));
+
         // 디버깅 출력
-        System.out.printf("🔎 donation success: id=%d, status=%s%n", result.getId(), result.getDonationStatus());
+        System.out.printf("🔎 donation success: id=%d, status=%s, item=%s%n",
+                result.getId(), result.getDonationStatus(), result.getDonationItem());
     }
 
     @Test
-    @DisplayName("포인트 후원 - 잔액 부족 시 실패 기록 저장 및 예외 발생")
-    void donateWithPoint_insufficientBalance_thenThrows() {
+    @DisplayName("포인트 후원 - 잔액 부족 시 Donation(FAILED) 저장 후 반환")
+    void donateWithPoint_insufficientBalance_returnsFailedDonation() {
         // given
 
         // 후원 아이템 설정 (생활용품, 50,000원)
@@ -171,37 +174,110 @@ public class DonationServiceTest {
 
         // ===== 후원 실패 기록 저장 모킹 =====
         // 잔액 부족 시, 후원 실패 기록 저장을 위해 save 호출 시 실패한 후원 객체 반환하도록 설정
-        Donation failedDonation = Donation.builder()                                // 후원 엔티티 빌더 패턴으로 생성
-                .userId(userId).donationItem(item).amount(item.getPrice())          // 후원자 ID, 아이템, 금액 설정
+        Donation failed = Donation.builder()                                // 후원 엔티티 빌더 패턴으로 생성
+                .id(2L).userId(userId)                                              // 후원자 ID 설정
+                .donationItem(item)                                                 // 후원 아이템 설정
+                .amount(item.getPrice())                                            // 후원 금액 설정
                 .donationType(Donation.DonationType.POINT)                          // 포인트 후원 유형 설정
                 .donationStatus(Donation.DonationStatus.FAILED)                     // 후원 상태 실패 설정
+                .errorMessage("잔액 부족")
                 .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())      // 생성/수정 시각 설정
                 .build();
         // 후원 저장 시, 실패한 후원 객체 반환하도록 설정
-        given(donationRepository.save(any(Donation.class))).willReturn(failedDonation);
+        given(donationRepository.save(any(Donation.class))).willReturn(failed);
 
         // when
         // 후원 서비스 호출 시 예외 발생 캡처
-        // 잔액 부족으로 인해 IllegalArgumentException 예외가 발생할 것으로 예상
-        Throwable thrown = catchThrowable(() -> donationService.donateWithPoint(userId, item));
+        Donation result = donationService.donateWithPoint(userId, item);
 
         // then
-        // 예외 검증
-        // 발생한 예외가 IllegalArgumentException인지 확인
-        // 예외 메시지에 "잔액이 부족" 문구가 포함되어 있는지 확인
-        assertThat(thrown).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("잔액이 부족");
-        // 후원 저장이 한 번 호출되었는지 확인 (잔액 부족으로 인해 실패 기록 저장)
+        // 1. 결과 검증
+        // 후원 결과가 null이 아닌지 확인
+        assertThat(result).isNotNull();
+        // 후원 상태가 FAILED인지 확인
+        assertThat(result.getDonationStatus()).isEqualTo(Donation.DonationStatus.FAILED);
+        // 에러 메시지에 "잔액" 포함되어 있는지 확인
+        assertThat(result.getErrorMessage()).contains("잔액");
+
+        // 2. 저장 호출 검증
+        // 후원 저장이 한 번 호출되었는지 확인
         then(donationRepository).should(times(1)).save(any(Donation.class));
+        // 지갑 변경/저장은 수행되지 않음
+        then(walletRepository).should(never()).save(any());
 
         // 디버깅 출력
-        System.out.printf("🔎 donation failed: userId=%d, item=%s, ex=%s%n",
-                userId, item, thrown.getClass().getSimpleName());
+        System.out.printf("🔎 donation failed: id=%d, status=%s, error=%s%n",
+                result.getId(), result.getDonationStatus(), result.getErrorMessage());
     }
 
     @Test
-    @DisplayName("직접 결제 후원 - 성공 (PG 승인)")
-    void donateWithPayment_success() {
+    @DisplayName("직접 결제 준비 - Order(WAIT) 저장 + Donation(REQUESTED, DIRECT) 저장 + URL 반환")
+    void prepareDirectDonation_success() {
+        // given
+
+        // 후원 아이템 설정 (식료품, 30,000원)
+        Donation.DonationItem item = Donation.DonationItem.FOOD;
+        // ===== Order 저장 모킹 =====
+        // Order 저장 시, ID가 부여된 Order 객체 반환하도록 설정
+        // Order 저장 시, id 부여/createdAt 세팅 등은 엔티티 콜백으로 처리되니 그대로 반환
+        willAnswer(inv -> inv.getArgument(0)).given(orderRepository).save(any(Order.class));
+
+        // ===== Donation 저장 모킹 =====
+        // Donation 저장 시, ID가 부여된 Donation 객체 반환하도록 설정
+        Donation savedDonation = Donation.builder().id(100L).build();
+        // ID가 부여된 후원 객체 반환하도록 설정
+        given(donationRepository.save(any(Donation.class))).willReturn(savedDonation);
+
+        // when
+        // 후원 서비스 호출하여 결과 받기
+        String url = donationService.prepareDirectDonation(userId, item);
+
+        // then
+        // 1. URL 포맷 검증
+        // URL이 null이 아니고, /order?로 시작하는지 확인
+        assertThat(url).startsWith("/order?");
+        // 2. 파라미터 확인 (간단 파싱)
+        // URL에 userId, amount, donationId, donationName 파라미터가 포함되어 있는지 확인
+        assertThat(url).contains("userId=" + userId);
+        assertThat(url).contains("amount=" + item.getPrice().toPlainString());
+        assertThat(url).contains("donationId=" + 100L);
+        assertThat(URLDecoder.decode(url, StandardCharsets.UTF_8))
+                .contains("donationName=" + item.name());
+
+        // 3. 저장 호출 검증 + 상태값 검증 (캡쳐로 확인)
+        // Order 저장 검증
+        // Order 캡쳐 객체 생성
+        ArgumentCaptor<Order> orderCap = ArgumentCaptor.forClass(Order.class);
+        // Order 저장 시, 상태가 WAIT로 설정되었는지 확인
+        then(orderRepository).should().save(orderCap.capture());
+        // Order 상태가 WAIT인지 확인
+        assertThat(orderCap.getValue().getStatus()).isEqualTo(OrderStatus.WAIT);
+
+        // Donation 저장 검증
+        // Donation 캡쳐 객체 생성
+        ArgumentCaptor<Donation> donationCap = ArgumentCaptor.forClass(Donation.class);
+        // Donation 저장 시, 후원 유형이 DIRECT, 상태가 REQUESTED로 설정되었는지 확인
+        then(donationRepository).should().save(donationCap.capture());
+        // 저장된 Donation 객체 가져오기
+        var d = donationCap.getValue();
+        // 후원 유형이 DIRECT인지 확인
+        assertThat(d.getDonationType()).isEqualTo(Donation.DonationType.DIRECT);
+        // 후원 상태가 REQUESTED인지 확인
+        assertThat(d.getDonationStatus()).isEqualTo(Donation.DonationStatus.REQUESTED);
+        // 연관된 Order가 설정되었는지 확인
+        assertThat(d.getOrder()).isNotNull();
+
+        // PG 호출 없음 검증
+        then(paymentGatewayService).shouldHaveNoInteractions();  // 이 단계에서는 PG 호출 없음
+
+        // 디버깅 출력
+        System.out.printf("🔎 prepare direct donation: url=%s, orderId=%d, donationId=%d%n",
+                url, orderCap.getValue().getId(), donationCap.getValue().getId());
+    }
+
+    @Test
+    @DisplayName("직접 결제 완료 - 멱등성 통과 후 PG 승인 + Order.APPROVED + Donation(COMPLETED) + Tx 연결")
+    void completeDirectDonation_success() {
         // given
 
         // 후원 아이템 설정 (식료품, 30,000원)
@@ -212,13 +288,41 @@ public class DonationServiceTest {
         ConfirmRequest confirmRequest = new ConfirmRequest("payKey", "orderId-123", "30000");
 
         // ===== 중복 결제 방지 모킹 =====
+        // 1) 멱등성: 아직 처리된 트랜잭션이 없다
         // 주문 ID로 이미 처리된 거래가 없는지 확인 (중복 결제 방지)
         given(transactionRepository.existsByOrderId(confirmRequest.orderId())).willReturn(false);
 
         // ===== PG 승인 모킹 =====
+        // 2) PG 승인 OK
         // PG 승인 요청 모킹 (실제 외부 호출 없이 doNothing으로 처리)
         // PG 승인 요청이 성공적으로 처리되었다고 가정
         doNothing().when(paymentGatewayService).confirm(confirmRequest);
+
+        // ===== Order 조회 및 승인 모킹 =====
+        // 3) Order 조회/승인
+        Order order = Order.builder()                                                   // 주문 엔티티 빌더 패턴으로 생성
+                .id(777L).userId(userId)                                                // 주문자 ID 설정
+                .amount(BigDecimal.valueOf(30_000))                                     // 주문 금액 설정
+                .requestId(confirmRequest.orderId())                                    // 요청 ID 설정
+                .status(OrderStatus.WAIT)                                               // 초기 상태 WAIT 설정
+                .build();
+        // 주문 조회 시, 미리 생성한 주문 객체 반환하도록 설정
+        given(orderRepository.findByRequestId(confirmRequest.orderId())).willReturn(order);
+        // 주문 저장 시, 상태가 APPROVED로 변경된 주문 객체 반환하도록 설정
+        willAnswer(inv -> inv.getArgument(0)).given(orderRepository).save(any(Order.class));
+
+        // ===== 후원 저장 모킹 =====
+        // 저장된 후원 객체 생성
+        Donation savedDonation = Donation.builder()                                     // 후원 엔티티 빌더 패턴으로 생성
+                .id(10L).userId(userId).donationItem(item)                              // 후원자 ID, 아이템 설정
+                .amount(item.getPrice())                                                // 후원 금액 설정
+                .donationType(Donation.DonationType.DIRECT)                             // 직접 결제 후원 유형 설정
+                .donationStatus(Donation.DonationStatus.COMPLETED)                      // 후원 상태 완료 설정
+                .order(order)                                                           // 연관된 주문 설정
+                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())          // 생성/수정 시각 설정
+                .build();
+        // 후원 저장 시, ID가 부여된 후원 객체 반환하도록 설정
+        given(donationRepository.findByOrder(order)).willReturn(Optional.of(savedDonation));
 
         // ===== 트랜잭션 생성 모킹 =====
         // PG 결제 트랜잭션 생성
@@ -227,40 +331,30 @@ public class DonationServiceTest {
         given(transactionService.pgPayment(userId, confirmRequest.orderId(), item.getPrice(), confirmRequest.paymentKey()))
                 .willReturn(tx);
 
-        // ===== 후원 저장 모킹 =====
-        // 저장된 후원 객체 생성
-        Donation savedDonation = Donation.builder()                                     // 후원 엔티티 빌더 패턴으로 생성
-                .id(10L).userId(userId).donationItem(item).amount(item.getPrice())      // 후원자 ID, 아이템, 금액 설정
-                .donationType(Donation.DonationType.DIRECT)                             // 직접 결제 후원 유형 설정
-                .donationStatus(Donation.DonationStatus.COMPLETED)                      // 후원 상태 완료 설정
-                .transaction(tx)                                                        // 연관된 트랜잭션 설정
-                .createdAt(LocalDateTime.now()).updatedAt(LocalDateTime.now())          // 생성/수정 시각 설정
-                .build();
-        // 후원 저장 시, ID가 부여된 후원 객체 반환하도록 설정
-        given(donationRepository.save(any(Donation.class))).willReturn(savedDonation);
-
         // when
         // 후원 서비스 호출하여 결과 받기
-        Donation result = donationService.donateWithPayment(userId, confirmRequest, item);
+        donationService.completeDirectDonation(confirmRequest);
 
         // then
-        // 결과 검증
-        // 후원 결과가 null이 아닌지 확인
-        assertThat(result).isNotNull();
-        // 후원 상태가 COMPLETED인지 확인
-        assertThat(result.getDonationStatus()).isEqualTo(Donation.DonationStatus.COMPLETED);
-        // 후원 금액이 아이템 가격과 일치하는지 확인
-        assertThat(result.getTransaction()).isEqualTo(tx);
-        // PG 승인 요청이 한 번 호출되었는지 확인
+        // 멱등성 통과로 PG 승인 요청이 한 번 호출되었는지 확인
         then(paymentGatewayService).should(times(1)).confirm(confirmRequest);
-        // 트랜잭션 생성이 한 번 호출되었는지 확인
-        then(transactionService).should(times(1)).pgPayment(userId, confirmRequest.orderId(), item.getPrice(), confirmRequest.paymentKey());
+
+        // 주문 상태가 APPROVED로 변경되어 저장되었는지 확인
+        then(orderRepository).should(times(1)).save(order);
+
+        // Donation 저장 시 COMPLETED/Tx 연결 확인
+        // Donation 캡쳐 객체 생성
+        ArgumentCaptor<Donation> cap = ArgumentCaptor.forClass(Donation.class);
         // 후원 저장이 한 번 호출되었는지 확인
-        then(donationRepository).should(times(1)).save(any(Donation.class));
+        then(donationRepository).should(times(1)).save(cap.capture());
+        // 후원 상태가 COMPLETED인지 확인
+        assertThat(cap.getValue().getDonationStatus()).isEqualTo(Donation.DonationStatus.COMPLETED);
+        // 트랜잭션이 연결되었는지 확인
+        assertThat(cap.getValue().getTransaction()).isEqualTo(tx);
 
         // 디버깅 출력
-        System.out.printf("🔎 donation success (PG): id=%d, status=%s, tx=%s%n",
-                result.getId(), result.getDonationStatus(), result.getTransaction().getOrderId());
+        System.out.printf("🔎 donation completed: userId=%d, orderId=%s, donationId=%d, txId=%d%n",
+                userId, confirmRequest.orderId(), savedDonation.getId(), tx.getId());
     }
 
     @Test
@@ -307,8 +401,8 @@ public class DonationServiceTest {
     }
 
     @Test
-    @DisplayName("직접 결제 후원 - 중복 orderId 시 예외 발생")
-    void donateWithPayment_whenDuplicateOrderId_thenThrows() {
+    @DisplayName("직접 결제 완료 - 이미 처리된 orderId면 아무 작업 없이 리턴(멱등성)")
+    void completeDirectDonation_idempotent() {
         // given
 
         // 후원 아이템 설정 (교재, 10,000원)
@@ -323,22 +417,22 @@ public class DonationServiceTest {
         given(transactionRepository.existsByOrderId(confirmRequest.orderId())).willReturn(true);
 
         // when
-        // 후원 서비스 호출 시 예외 발생 캡처
-        // 중복 orderId로 인해 IllegalArgumentException 예외가 발생할 것으로 예상
-        Throwable thrown = catchThrowable(() -> donationService.donateWithPayment(userId, confirmRequest, item));
+        // 후원 서비스 호출 (중복이므로 예외는 던지지 않고 조용히 종료)
+        donationService.completeDirectDonation(confirmRequest);
 
         // then
-        // 예외 검증
-        // 발생한 예외가 IllegalArgumentException인지 확인
-        // 예외 메시지에 "이미 처리된" 문구가 포함되어 있는지 확인
-        assertThat(thrown).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("이미 처리된");
-        // 중복 확인을 위해 orderId 존재 여부 조회가 한 번 호출되었는지 확인
-        then(transactionRepository).should(times(1)).existsByOrderId(confirmRequest.orderId());
+        // 중복이므로 아무 작업도 수행하지 않았는지 검증
+        then(paymentGatewayService).shouldHaveNoInteractions();
+        // 주문 저장도 호출되지 않았는지 확인
+        then(orderRepository).shouldHaveNoInteractions();
+        // 후원 저장도 호출되지 않았는지 확인
+        then(donationRepository).shouldHaveNoInteractions();
+        // 트랜잭션 생성도 호출되지 않았는지 확인
+        then(transactionService).shouldHaveNoInteractions();
 
         // 디버깅 출력
-        System.out.printf("🔎 duplicate donation blocked: orderId=%s, ex=%s%n",
-                confirmRequest.orderId(), thrown.getClass().getSimpleName());
+        System.out.printf("🔎 donation skipped (duplicate): userId=%d, orderId=%s%n",
+                userId, confirmRequest.orderId());
     }
 
     @Test
