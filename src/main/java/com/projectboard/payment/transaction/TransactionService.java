@@ -47,7 +47,7 @@ public class TransactionService {
         try {
             // 사용자 지갑 조회
             final FindWalletResponse findWalletResponse = walletService
-                    .findWalletByWalletId(request.walletId());
+                    .findWalletByUserId(request.walletId());
             // 지갑이 존재하지 않는 경우 예외 처리
             if (findWalletResponse == null) {
                 throw new RuntimeException("사용자 지갑이 존재하지 않습니다.");
