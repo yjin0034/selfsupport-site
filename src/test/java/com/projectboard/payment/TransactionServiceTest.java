@@ -84,7 +84,7 @@ class TransactionServiceTest {
                 LocalDateTime.now(),
                 LocalDateTime.now()
         );
-        given(walletService.findWalletByWalletId(userId)).willReturn(findWallet);
+        given(walletService.findWalletByUserId(userId)).willReturn(findWallet);
 
         // 충전 응답 스텁: 잔액 0 + 10 = 10
         AddBalanceWalletResponse addBalanceResponse = new AddBalanceWalletResponse(
@@ -109,7 +109,7 @@ class TransactionServiceTest {
 
         // then
         // 1. 협력자 호출 검증
-        then(walletService).should(times(1)).findWalletByWalletId(userId);
+        then(walletService).should(times(1)).findWalletByUserId(userId);
 
         // addBalance 호출 시, 인자로 넘어간 walletId/amount가 기대값인지 확인
         ArgumentCaptor<AddBalanceWalletRequest> addReqCaptor = ArgumentCaptor.forClass(AddBalanceWalletRequest.class);
@@ -152,7 +152,7 @@ class TransactionServiceTest {
         ChargeTransactionRequest request = new ChargeTransactionRequest(userId, orderId, amount);
 
         // 지갑 조회 시 해당 지갑이 존재하지 않으면 WalletNotFoundException 예외를 던지도록 스텁
-        given(walletService.findWalletByWalletId(userId))
+        given(walletService.findWalletByUserId(userId))
                 .willThrow(new WalletNotFoundException(userId));
 
         // when
@@ -168,7 +168,7 @@ class TransactionServiceTest {
 
         // 2. 협력자 상호작용 검증
         // 중복 주문 검사만 1회 호출되어야 함
-        then(walletService).should(times(1)).findWalletByWalletId(userId);
+        then(walletService).should(times(1)).findWalletByUserId(userId);
 
         // 지갑이 없으므로 충전/트랜잭션 저장은 호출되면 안 됨
         then(walletService).should(never()).addBalance(any(AddBalanceWalletRequest.class));
@@ -200,7 +200,7 @@ class TransactionServiceTest {
         // walletService 호출 스텁 (실제론 쓰이지 않아야 하지만 플로우상 필요)
         FindWalletResponse walletResponse =
                 new FindWalletResponse(walletId, walletId, BigDecimal.ZERO, LocalDateTime.now(), LocalDateTime.now());
-        given(walletService.findWalletByWalletId(walletId)).willReturn(walletResponse);
+        given(walletService.findWalletByUserId(walletId)).willReturn(walletResponse);
         AddBalanceWalletResponse updatedWallet =
                 new AddBalanceWalletResponse(walletId, walletId, amount, LocalDateTime.now(), LocalDateTime.now());
         given(walletService.addBalance(any(AddBalanceWalletRequest.class))).willReturn(updatedWallet);
