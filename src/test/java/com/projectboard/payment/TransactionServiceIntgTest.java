@@ -128,6 +128,7 @@ public class TransactionServiceIntgTest {
         // DB에 commit 강제 (다른 스레드가 조회할 수 있도록)
         walletRepository.flush();
 
+
         // 동일 orderId 준비
         // 충전 금액 1000원
         String orderId = "order-123";
@@ -148,7 +149,7 @@ public class TransactionServiceIntgTest {
                 try {
                     // 실제 서비스 호출
                     ChargeTransactionResponse response = transactionService.charge(
-                            new ChargeTransactionRequest(walletId, orderId, amount)
+                            new ChargeTransactionRequest(1L, orderId, amount)
                     );
                     // 결과 수집 (동기화 필요)
                     synchronized (results) {
@@ -184,6 +185,7 @@ public class TransactionServiceIntgTest {
         // given
         // 사용자 지갑 생성
         CreatedWalletResponse wallet = walletService.createWallet(new CreateWalletRequest(1L));
+
         // 생성된 지갑 ID
         Long walletId = wallet.id();
 
@@ -191,7 +193,7 @@ public class TransactionServiceIntgTest {
         walletRepository.flush();
 
         // 우선 1000원 충전
-        transactionService.charge(new ChargeTransactionRequest(walletId, "init", BigDecimal.valueOf(1000)));
+        transactionService.charge(new ChargeTransactionRequest(1L, "init", BigDecimal.valueOf(1000)));
 
         // 동일 donationId 준비
         // 결제 금액 500원
