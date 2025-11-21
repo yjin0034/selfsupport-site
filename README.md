@@ -254,7 +254,10 @@ DB 필드(스키마), 그리고 ERD 관계를 한 섹션으로 통합하여 정�
 
 #### **🔗 4) ERD 관계 구조**
 ```yaml
-USER_ACCOUNT (1) —— (N) ARTICLE —— (N) ARTICLE_COMMENT
+USER_ACCOUNT (1) —— (N) ARTICLE
+USER_ACCOUNT (1) —— (N) ARTICLE_COMMENT
+
+ARTICLE      (1) —— (N) ARTICLE_COMMENT
 ```
 
 ```yaml
@@ -264,7 +267,6 @@ USER
 ├─ password
 └─ nickname
     │
-    │
     ├── (1:N) ARTICLE
     │        ├─ id (PK)
     │        ├─ title
@@ -272,12 +274,19 @@ USER
     │        ├─ hashtag
     │        ├─ user_id (FK)               # USER.id
     │        ├─ created_at / created_by
-    │        └─ ...
+    │        │
+    │        └── (1:N) ARTICLE_COMMENT
+    │                 ├─ id (PK)
+    │                 ├─ article_id (FK)    # ARTICLE.id
+    │                 ├─ user_id (FK)       # USER.id
+    │                 ├─ content
+    │                 ├─ created_at / created_by
+    │                 └─ ...
     │
-    └── (1:N) ARTICLE_COMMENT
+    └── (1:N) ARTICLE_COMMENT (작성자 기준)
              ├─ id (PK)
-             ├─ article_id (FK)            # ARTICLE.id
-             ├─ user_id (FK)               # USER.id
+             ├─ article_id (FK)
+             ├─ user_id (FK)               
              ├─ content
              ├─ created_at / created_by
              └─ ...
@@ -367,50 +376,36 @@ USER
 ### **5) ERD 전체 구조**
 
 ```yaml
-USER (1) — (1) WALLET — (N) TRANSACTION
-│
-└— (N) ORDER — (1) DONATION
+USER (1) — (1) WALLET
+USER (1) — (N) ORDER
+USER (1) — (N) DONATION
+
+WALLET (1) — (N) TRANSACTION
+
+ORDER (1) — (N) DONATION
+ORDER (1) — (N) TRANSACTION
+
+DONATION (1) — (N) TRANSACTION
 ```
 
 ```yaml
 USER
 ├─ id (PK)
-├─ email
 ├─ password
+├─ email
 └─ nickname
-      │
-      ├── (1:1) WALLET
-      │        ├─ id (PK)                 # USER.id
-      │        ├─ user_id (FK)          
-      │        ├─ balance                 # 현재 잔액
-      │        └─ ...
-      │
-      ├── (1:N) TRANSACTION
-      │        ├─ id (PK)                    # USER.id
-      │        ├─ wallet_id (FK)             # WALLET.id
-      │        ├─ type                       # CHARGE / PAYMENT / PG_PAYMENT
-      │        ├─ amount
-      │        ├─ order_id (FK, nullable)    # ORDER.id
-      │        ├─ donation_id (FK, nullable) # DONATION.id
-      │        ├─ payment_key (nullable)
-      │        └─ ...
-      │
-      ├── (1:N) ORDER
-      │        ├─ id (PK)
-      │        ├─ user_id (FK)            # USER.id
-      │        ├─ amount
-      │        ├─ request_id              # Toss 위젯 requestId
-      │        ├─ status                  # WAIT / APPROVED / FAILED
-      │        └─ ...
-      │
-      └── (1:N) DONATION
-               ├─ id (PK)
-               ├─ user_id (FK)            # USER.id (후원자)
-               ├─ donation_item
-               ├─ amount
-               ├─ order_id (FK, nullable) # 직접 결제의 경우 ORDER.id
-               ├─ status                  # PENDING / COMPLETED
-               └─ created_at
+    │
+    │
+    ├── (1:1) WALLET
+    │        └── (1:N) TRANSACTION           # 지갑의 입출금 모든 기록
+    │
+    ├── (1:N) ORDER
+    │        ├── (1:1) DONATION              # 직접 결제의 경우
+    │        └── (1:N) TRANSACTION           # 해당 주문의 결제 트랜잭션 (확장성 관점에서 1:N. 재시도, 부분 결제, 취소 등)
+    │
+    └── (1:N) DONATION
+             │
+             └── (1:N) TRANSACTION           # 후원과 연결된 모든 트랜잭션 (PG/포인트. 확장성 관점에서 1:N)
 ```
 
 ---
