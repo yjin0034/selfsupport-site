@@ -1080,7 +1080,7 @@ walletRepository.flush();
 
 ---
 
-🚦 12. 실행 방법
+## 🚦 12. 실행 방법
 ```bash
 git clone https://github.com/{username}/selfsupport-site.git
 cd selfsupport-site
@@ -1099,80 +1099,69 @@ java -jar build/libs/board-project-0.0.1-SNAPSHOT.jar
 ### 📄 13-1. 게시판 서비스
 
 - **로그인 화면**
-<img width="400p" alt="로그인" src="https://github.com/user-attachments/assets/a07807ff-dca1-4d37-808a-c04bc7c8b481" />
-
----
+<img width="400p" alt="로그인" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EB%A1%9C%EA%B7%B8%EC%9D%B8.png" />
+<br>
 
 - **게시글 목록**
-<img width="400p" height="893" alt="게시글 목록" src="https://github.com/user-attachments/assets/73f93155-8145-4cb4-8b17-32f859e31615" />
-
----
+<img width="400p" height="893" alt="게시글 목록" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80%20%EB%AA%A9%EB%A1%9D.png)" />
+<br>
 
 - **게시글 상세**
-<img width="400" alt="게시글 상세" src="https://github.com/user-attachments/assets/859d07a8-8df5-4393-8f8b-40365f11a177" />
-
----
+<img width="400" alt="게시글 상세" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80%20%EC%83%81%EC%84%B8.png" />
+<br>
 
 - **게시글 작성**
-<img width="400" alt="게시글 작성" src="https://github.com/user-attachments/assets/20fceb8e-0eb3-4efa-a180-3a18e7a7241c" />
-
----
+<img width="400" alt="게시글 작성" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80-%EC%9E%91%EC%84%B1.gif" />
+<br>
 
 - **게시글 수정**
-<img width="400" alt="게시글 수정" src="https://github.com/user-attachments/assets/3575a13e-70b1-47a7-b2a4-4b8e51e3ba34" />
-
----
+<img width="400" alt="게시글 수정" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80-%EC%88%98%EC%A0%95.gif" />
+<br>
 
 - **댓글 작성**
-<img width="400" alt="댓글 작성" src="https://github.com/user-attachments/assets/590853fc-dbcd-4e8b-9560-1701ba95309a" />
-
----
+<img width="400" alt="댓글 작성" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EB%8C%93%EA%B8%80-%EC%9E%91%EC%84%B1.gif" />
+<br>
 
 - **게시글 검색**
-<img width="400" alt="게시글 검색" src="https://github.com/user-attachments/assets/360f044b-41af-4efc-b30f-bdc8ce961d94" />
-
----
+<img width="400" alt="게시글 검색" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80-%EA%B2%80%EC%83%89.gif" />
+<br>
 
 - **해시태그 검색**
-<img width="400" alt="해시태그 검색" src="https://github.com/user-attachments/assets/676235e6-b7fb-4273-841a-3ede07386739" />
+<img width="400" alt="해시태그 검색" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%ED%95%B4%EC%8B%9C%ED%83%9C%EA%B7%B8-%EA%B2%80%EC%83%89.gif" />
+<br>
 
 ---
 
 ### 💳 13-2. 결제/후원 서비스
 
 - **충전 페이지**
-<img width="400" alt="충전 페이지" src="https://github.com/user-attachments/assets/b023d53d-7658-4991-984c-0dfa0959d0fe" />
-
----
+<img width="400" alt="충전 페이지" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EC%B6%A9%EC%A0%84%20%ED%8E%98%EC%9D%B4%EC%A7%80.png" />
+<br>
 
 - **후원 페이지**
-<img width="400" alt="후원 페이지" src="https://github.com/user-attachments/assets/c362990a-9208-4205-9f89-29ff0bf120df" />
-
----
+<img width="400" alt="후원 페이지" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%ED%9B%84%EC%9B%90%20%ED%8E%98%EC%9D%B4%EC%A7%80.png" />
+<br>
 
 - **Toss 결제 위젯**
-<img width="400" alt="Toss 결제 위젯" src="https://github.com/user-attachments/assets/79482ab6-9e23-4a85-ab50-5a6c2afcd45a" />
-
----
+<img width="400" alt="Toss 결제 위젯" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/Toss%20%EA%B2%B0%EC%A0%9C%20%EC%9C%84%EC%A0%AF.png" />
+<br>
 
 - **결제 성공 리디렉션 페이지**
-<img width="400" alt="결제 성공 리다이렉션" src="https://github.com/user-attachments/assets/8a2a5a23-5f20-4a9b-85bc-9994d4fbcd75" />
-
----
+<img width="400" alt="결제 성공 리다이렉션" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%B0%EC%A0%9C%20%EC%84%B1%EA%B3%B5%20%EB%A6%AC%EB%8B%A4%EC%9D%B4%EB%A0%89%EC%85%98.png" />
+<br>
 
 - **지갑 충전**
-<img width="400" alt="지갑 충전" src="https://github.com/user-attachments/assets/5f1ea201-7c3e-43ee-be5a-fcc4cc857da5" />
-
----
+<img width="400" alt="지갑 충전" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EC%A7%80%EA%B0%91-%EC%B6%A9%EC%A0%84.gif" />
+<br>
 
 - **직접 결제 후원**
-<img width="400" alt="직접 결제 후원" src="https://github.com/user-attachments/assets/c2d8af27-0d72-475a-9716-99a8fdeb560c" />
-
----
+<img width="400" alt="직접 결제 후원" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EC%A7%81%EC%A0%91-%EA%B2%B0%EC%A0%9C-%ED%9B%84%EC%9B%90_1.gif" />
+<br>
 
 - **포인트 후원**
-<img width="400" alt="포인트 후원" src="https://github.com/user-attachments/assets/02e30df7-6c9a-4cff-81ce-2f40a6a08c5d" />
-  
+<img width="400" alt="포인트 후원" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%ED%8F%AC%EC%9D%B8%ED%8A%B8-%ED%9B%84%EC%9B%90_1.gif" />
+<br>
+
 ---
 
 ## 🧩 14. 프로젝트 구조 요약
