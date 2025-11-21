@@ -1103,7 +1103,7 @@ java -jar build/libs/board-project-0.0.1-SNAPSHOT.jar
 <br>
 
 - **게시글 목록**
-<img width="400p" height="893" alt="게시글 목록" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80%20%EB%AA%A9%EB%A1%9D.png)" />
+<img width="400p" height="893" alt="게시글 목록" src="https://github.com/yjin0034/selfsupport-site/blob/main/document/images/%EA%B2%8C%EC%8B%9C%EA%B8%80%20%EB%AA%A9%EB%A1%9D.png" />
 <br>
 
 - **게시글 상세**
