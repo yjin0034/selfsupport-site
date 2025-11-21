@@ -669,11 +669,11 @@ PaymentProcessingService
 1. 프론트엔드가 POST /api/wallets/charge-confirm 요청
     - body: { paymentKey, orderId, amount }
 2. PaymentProcessingService.createCharge() 호출
-    2-1) Order 조회
-    2-2) 외부 PG 승인 API 호출
-    2-3) Order 상태 APPROVED
-    2-4) Wallet 잔액 증가
-    2-5) Transaction(CHARGE) 생성
+	- 2-1) Order 조회
+    - 2-2) 외부 PG 승인 API 호출
+    - 2-3) Order 상태 APPROVED
+    - 2-4) Wallet 잔액 증가
+    - 2-5) Transaction(CHARGE) 생성
    
 **(5) 후처리 및 페이지 이동**
 1. confirm 성공 → 302 Redirect: /donations
